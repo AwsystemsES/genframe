@@ -174,7 +174,8 @@ ${captionCss(art)}`;
 
   // Escenas: cada una en su sección, que entra por encima de la anterior con su transición.
   const sections = job.scenes.map((s, i) => {
-    const start = i === 0 ? 0 : Math.max(0, s.start - TURN);
+    // Un corte entra justo en su instante; las demás transiciones empiezan TURN antes para fundirse con la anterior.
+    const start = i === 0 ? 0 : Math.max(0, s.start - ((s.transition || 'corte') === 'corte' ? 0 : TURN));
     const end = i === job.scenes.length - 1 ? job.duration : job.scenes[i + 1].start + 0.02;
     return `<section id="sc-${s.id}" class="clip scene${s.transition === 'pagina' ? ' shadow' : ''}" style="z-index:${10 + i}" data-start="${start.toFixed(3)}" data-duration="${(end - start).toFixed(3)}"><div class="scene-root"></div></section>`;
   });

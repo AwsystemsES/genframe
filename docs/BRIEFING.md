@@ -46,7 +46,7 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 - **Node:** está en `~/.local/node/bin` y no en el PATH del sistema. Usa `PATH=~/.local/node/bin:$PATH node bin/genframe.mjs …`.
 - **ffmpeg y ffprobe:** vienen con `npm install` (paquetes `ffmpeg-static` 5.3.0 y `ffprobe-static` 3.1.0). La herramienta los pone delante en el PATH para que HyperFrames los encuentre. `FFMPEG`/`FFPROBE` en el `.env` solo hacen falta si se quieren otros. genframe ya no depende del laboratorio de Descargas: se probó renderizando con el laboratorio oculto y el 17-10 el laboratorio (`~/Downloads/explicativo-lab`) se movió a la Papelera; todo lo que valía está en este repositorio (`referencias/`, `assets/`, `docs/historia-laboratorio/`).
 - **Python:** `python3` con numpy 2.0.2 (para `src/audio.py`).
-- **`.env`:** copia de `.env.example`. Falta que el usuario ponga `ELEVENLABS_API_KEY` y, si quiere, `ELEVENLABS_VOICE_ID`. Modelo elegido: `eleven_multilingual_v2` (0,08 $ por cada 1.000 caracteres).
+- **`.env`:** copia de `.env.example`, ya con `ELEVENLABS_API_KEY` y `ELEVENLABS_VOICE_ID`. La clave no tiene el permiso `voices_read`: `voces` da 401, pero `voz` funciona. Modelo elegido: `eleven_multilingual_v2` (0,08 $ por cada 1.000 caracteres).
 - **GitHub:**
   - Acceso con la deploy key `~/.ssh/github_genframe` (con escritura), alias SSH `github-genframe` en `~/.ssh/config`.
   - El remoto del clon es `git@github-genframe:AwsystemsES/genframe.git`; commits con «Manuel Rodríguez Llanes».
@@ -231,7 +231,14 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
 ## 11. Estado y próximos pasos
 
 1. **Lo que hay:** genframe montado, independiente (trae su propio ffmpeg), subido y probado de punta a punta con una voz provisional de macOS (proyecto `prueba`, 6 s renderizados en unos 40 s). Falta la clave de ElevenLabs en el `.env`.
-2. **Primer encargo:** el short vertical de 1 minuto del Día D. El guion y la dirección están en `docs/encargos/normandia-short.md`. Hacerlo con la skill completa (mesa de cada pieza y revisión de cada escena) y apuntar aquí lo que se aprenda.
+2. **Primer encargo, hecho (17-10):** el short vertical del Día D está en `proyectos/normandia/normandia.mp4`.
+   - Duración y coste: 75,8 s; voz real de ElevenLabs por ≈ 0,07 $; render en 156 s en el Mac.
+   - Trabajo: 10 piezas revisadas en la mesa y 14 escenas revisadas con sus fotos.
+   - Notas: la mitad de las escenas se quedan en 7,5. El detalle y lo aprendido están en `docs/encargos/normandia-estado.md` y en `SKILL.md` (recetas y fallos).
+   - Cambios en la herramienta:
+     - los cortes ya no se adelantan 0,55 s (`src/assemble.mjs`);
+     - curva de volumen de la música atada a palabras: `musica.curva`;
+     - `build` acepta palabras (`bin/genframe.mjs` y `src/audio.py`).
 3. **Generadores pendientes:** aviones, vehículos, edificios, vegetación, animales y personajes 2D.
 4. **Mejoras de la herramienta:**
    - `fotos --escena` con zoom de detalle;

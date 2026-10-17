@@ -337,7 +337,11 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     }
     const music = p.plan.sonido?.musica || {engine: 'ninguna'};
     const third = scenes[Math.floor(scenes.length / 3)]?.start, two = scenes[Math.floor((scenes.length * 2) / 3)]?.start;
-    const sound = {duration: duration(p), voice: path.join(p.dir, 'voz.mp3'), music: {...music, build: music.build || [third, two].filter(Boolean)}, sfx, ambience: amb};
+    // build y curva aceptan segundos o palabras del guion ({palabra, gain} o 'palabra').
+    const when = (x) => (typeof x === 'number' ? x : cue(typeof x === 'string' ? x : x.palabra, typeof x === 'object' && x.tras ? (cue(x.tras, 0) ?? 0) : 0));
+    const build = (music.build || [third, two]).map(when).filter((x) => x !== null && x !== undefined);
+    const curve = (music.curva || []).map((c) => [c.t ?? (when(c) === null ? null : when(c) + (c.desfase || 0)), c.gain ?? 1]).filter(([t]) => t !== null && t !== undefined).sort((a, b) => a[0] - b[0]);
+    const sound = {duration: duration(p), voice: path.join(p.dir, 'voz.mp3'), music: {...music, build, curve}, sfx, ambience: amb};
     fs.writeFileSync(path.join(p.dir, 'sonido.json'), JSON.stringify(sound, null, 1));
     const {stdout} = await run(PYTHON, [path.join(ROOT, 'src/audio.py'), path.join(p.dir, 'sonido.json'), path.join(p.dir, 'mix.wav')], {maxBuffer: 1 << 24, env: {...process.env, FFMPEG}});
     console.log('✔ mix.wav · ' + stdout.trim());

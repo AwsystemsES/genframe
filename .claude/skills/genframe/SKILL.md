@@ -61,6 +61,8 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 9. **Sonido.** En `plan.json` → `sonido`:
    - `musica`: `{engine: 'orquesta', key, mode, bpm, lead: 'harp'|'piano'|'strings', gain}`, o `{engine: 'sintetizador', style: 'urbano'|'synthwave'|'curioso'}`, o `{engine: 'ninguna'}`.
    - Efectos y ambientes, en cada escena.
+   - `musica.build`: dónde entran más instrumentos, en segundos o con palabras del guion (`["adelante", "rampas"]`).
+   - `musica.curva`: volumen de la música atado a palabras: `[{t: 0, gain: 0.85}, {palabra: "piensa", gain: 0.12}, {palabra: "adelante", desfase: -0.08, gain: 0.08}, {palabra: "adelante", gain: 1.05}]` (silencios, entradas de golpe y crescendos; se interpola entre puntos).
 10. **Render.** `render`. Mira 3-4 fotogramas del MP4 final y entrégalo al usuario con su ruta, su duración y lo que ha costado la voz.
 
 ## Rúbrica (aplícala tú, con exigencia de canal profesional)
@@ -74,6 +76,20 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 7. **Acabado:** nada de cajas toscas, piezas flotando, textos cortados o solapados, ni nada que tape la franja de subtítulos.
 
 Un 5-6 es «correcto pero pobre». Un 8 es «lo publicaría un canal grande». No entregues nada por debajo de 8 sin decirlo.
+
+## Recetas y fallos aprendidos
+
+- **Revisar imágenes nuevas:** el visor puede devolver la imagen anterior si la ruta coincide. Copia cada `hoja.jpg` con un nombre nuevo (por ejemplo, en el scratchpad) antes de mirarla.
+- **Cifras:** `K.count` usa `Intl` es-ES, que no pone punto en números de 4 cifras («7000»). Formatéalas a mano con `String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')`.
+- **`f.lathe`:** el perfil va de abajo arriba (y creciente). Si no, las normales quedan hacia dentro y la pieza sale negra.
+- **Interiores:** usa `w.shot` manual y calcula de qué lado queda la cámara (posición = objetivo + (sin yaw, cos yaw) × dist). Mantén la cámara por debajo de las lámparas colgantes, y pasa a primer plano con un corte (`dur: 0.02`) en vez de un vuelo que atraviese el decorado.
+- **Barcos largos en vertical:** un buque de 175 m no cabe de costado. Encuádralo desde la proa, con las torres en primer término.
+- **Fogonazos y destellos que deben verse sí o sí:** una capa 2D colocada en cada fotograma proyectando la posición 3D (`obj.getWorldPosition(v); v.project(w.camera)`) dentro de un `K.onFrame` creado después de `K.world3d`. Las esferas emisivas grandes, vistas de cerca, parecen globos opacos.
+- **Mar con olas grandes:** cámara en picado (20-30°) para que ninguna ola tape la lancha.
+- **Lluvia:** se lee mejor en 2D (un canvas por encima con trazos diagonales en `K.onFrame`) que con `w.fx('rain')`.
+- **Mapa con playas o puntos cercanos:** etiquetas alternadas arriba y abajo con línea guía, el centro dentro de `K.safe`, y `transformBox: 'fill-box'` en los círculos SVG que crecen con `K.show`.
+- **Títulos en dos líneas:** `K.splitWords` pierde los `<br>`. Usa una caja por línea.
+- **Caras:** nada de bigotes cortos y oscuros en militares; pueden evocar a quien no se debe.
 
 ## Reglas que no se rompen
 

@@ -4,7 +4,7 @@ marcan las escenas, ambientes sintetizados con filtros y la voz encima (la músi
 normalizado a -14 LUFS.
 
 Uso: python3 audio.py job.json salida.wav
-job: {duration, voice, music: {engine: 'orquesta'|'sintetizador', key, mode, bpm, lead, style, gain, build: [t, t]}, sfx: [{name, t, gain}], ambience: [{kind, from, to, gain}]}
+job: {duration, voice, music: {engine: 'orquesta'|'sintetizador', key, mode, bpm, lead, style, gain, build: [t, t], curve: [[t, ganancia], …]}, sfx: [{name, t, gain}], ambience: [{kind, from, to, gain}]}
 """
 import json, os, re, subprocess, sys, wave
 import numpy as np
@@ -270,6 +270,11 @@ def mix(job, out_path):
         music = compose(cfg, dur, build)
     else:
         music = np.zeros((n, 2))
+    # Curva de volumen de la música: [[t, ganancia], …] interpolada (silencios, entradas y crescendos).
+    curve = music_cfg.get('curve') or []
+    if curve:
+        ts = np.arange(n) / SR
+        music *= np.interp(ts, [c[0] for c in curve], [c[1] for c in curve])[:, None]
     fx = np.zeros((n, 2))
     for i, a in enumerate(job.get('ambience') or []):
         a0, a1 = float(a.get('from', 0)), float(a.get('to', dur))
