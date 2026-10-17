@@ -804,10 +804,11 @@
     /**
      * Formación de n piezas iguales separadas según su tamaño real (nunca se atraviesan): 'V' (aviones, aves), 'fila'
      * (hombro con hombro), 'columna' (una tras otra), 'rejilla'. center: {x, z} o [lon, lat]. opts: rotate (hacia dónde
-     * miran), y, separacion (×tamaño, por defecto 1.3), escalon (altura extra por puesto) y el resto, parámetros de la pieza.
+     * miran), y, separacion (×tamaño, por defecto 1.3), escalon (altura extra por puesto), params ((i) => ({…}) para variar cada
+     * puesto) y el resto, parámetros de la pieza.
      */
-    W.formation = (name, n, center, {tipo = 'V', rotate = 0, y = null, separacion = 1.3, escalon = 0, ...params} = {}) => {
-      const first = W.add(name, center, {...params, rotate, y, separar: false});
+    W.formation = (name, n, center, {tipo = 'V', rotate = 0, y = null, separacion = 1.3, escalon = 0, params: per = null, ...params} = {}) => {
+      const first = W.add(name, center, {...params, ...(per ? per(0) : {}), rotate, y, separar: false});
       const l = first.userData.local, wd = (l.max.x - l.min.x) * separacion, dp = (l.max.z - l.min.z) * separacion;
       const [cx, cz] = toXZ(center), yaw = (rotate * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
       const cols = Math.ceil(Math.sqrt(n));
@@ -820,7 +821,7 @@
       const list = [first];
       const place = (o, i) => { const [lx, lz] = slot(i); o.position.x = cx + lx * c + lz * sn; o.position.z = cz - lx * sn + lz * c; if (y !== null) o.position.y = y + escalon * Math.ceil(i / 2); else if (o.userData.grounded) o.position.y = terrainHeight ? terrainHeight(o.position.x, o.position.z) : o.position.y; };
       place(first, 0);
-      for (let i = 1; i < n; i++) { const o = W.add(name, center, {...params, rotate, y, separar: false}); place(o, i); list.push(o); }
+      for (let i = 1; i < n; i++) { const o = W.add(name, center, {...params, ...(per ? per(i) : {}), rotate, y, separar: false}); place(o, i); list.push(o); }
       return list;
     };
     /**

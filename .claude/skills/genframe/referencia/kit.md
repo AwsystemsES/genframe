@@ -100,7 +100,7 @@ w.drift(1.5);                                                       // giro lent
 w.pose(o, t, {hombro_der: {x: -80}}, 0.5);  w.act(o, 'andar', t0, t1, {rate: 1});   // articulaciones y acciones del reparto
 w.move(o, t, {x: 80, z: 0}, dur);  w.hide(o, t);  w.show(o, t);       // w.move: vehículos y barcos (dejan estela si flotan)
 w.walk(persona, [{x, z}, …], t0, {paso: 'andar'|'correr'|'correr_agachado', hasta, velocidad});  // a pie: zancada ligada a la distancia, sigue el terreno y rodea obstáculos (A*)
-w.formation('avion', 5, {x, z}, {tipo: 'V'|'fila'|'columna'|'rejilla', rotate, y, separacion: 1.3});  // n piezas sin solaparse
+w.formation('avion', 5, {x, z}, {tipo: 'V'|'fila'|'columna'|'rejilla', rotate, y, separacion: 1.3, params: (i) => ({variante: i})});  // n piezas sin solaparse
 w.scatter('roca', 20, {x, z, w, d} | {x, z, r}, {seed, separacion: 1.15, giro: 'azar'});      // reparto sin que se toquen entre sí ni con lo que hay
 w.point(persona, t, destino, {brazo: 'der', hasta});  w.look(persona, t, destino);           // señalar y mirar a una pieza, punto {x,y,z} o [lon, lat]
 w.shake(t, 1);                                                                                  // sacudida de cámara
