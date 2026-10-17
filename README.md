@@ -39,7 +39,9 @@ También puedes usar la herramienta a mano: `node bin/genframe.mjs` lista los co
 | `src/kit/gen.js` | Generadores procedurales del taller (`f.gen.human`, `f.gen.hull`). |
 | `src/assemble.mjs` | Monta el proyecto HyperFrames. |
 | `src/audio.py` | Música compuesta, efectos, ambientes y mezcla a −14 LUFS. |
-| `assets/` | Recursos libres (ver `assets/LICENCIAS.md`). |
+| `assets/` | Recursos libres (ver `assets/LICENCIAS.md`): muestras de instrumentos y efectos que ya usa el motor, y además iluminaciones HDRI, texturas, la Tierra de la NASA y la geografía de Natural Earth en alta resolución, listas para usar en 3D y mapas. |
+| `referencias/videos/` | Los mejores vídeos hechos a mano en el laboratorio (VOX estilo GTA, A350, ciclo del agua…): la vara de medir la calidad. |
+| `docs/historia-laboratorio/` | El motor del laboratorio del 14-10 (con su biblioteca de modelos, solo como consulta de recetas) y el plan de 123 escenas del documental del Día D. |
 | `.claude/skills/genframe/` | La skill y sus manuales. |
 | `proyectos/` | Tus vídeos (no se suben al repositorio). |
 

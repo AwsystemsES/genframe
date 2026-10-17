@@ -17,6 +17,7 @@ import path from 'path';
 import {execFile} from 'child_process';
 import {promisify} from 'util';
 import {fileURLToPath} from 'url';
+import {createRequire} from 'module';
 
 const run = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,10 +28,13 @@ for (const line of fs.existsSync(path.join(ROOT, '.env')) ? fs.readFileSync(path
 }
 process.env.HYPERFRAMES_NO_TELEMETRY = '1';
 const HF = process.env.HYPERFRAMES_BIN || path.join(ROOT, 'node_modules/.bin/hyperframes');
-const FFMPEG = process.env.FFMPEG || 'ffmpeg';
-// HyperFrames busca ffmpeg y ffprobe en el PATH: si el .env da una ruta, su carpeta va delante.
-if (FFMPEG.includes('/')) process.env.PATH = path.dirname(FFMPEG) + path.delimiter + process.env.PATH;
-const FFPROBE = process.env.FFPROBE || (FFMPEG.endsWith('ffmpeg') ? FFMPEG.slice(0, -6) + 'ffprobe' : 'ffprobe');
+// ffmpeg y ffprobe vienen con «npm install» (ffmpeg-static y ffprobe-static); el .env puede indicar otros.
+const req = createRequire(import.meta.url);
+const bundled = (name, pick) => { try { const v = pick(req(name)); return v && fs.existsSync(v) ? v : null; } catch { return null; } };
+const FFMPEG = process.env.FFMPEG || bundled('ffmpeg-static', (m) => m) || 'ffmpeg';
+const FFPROBE = process.env.FFPROBE || bundled('ffprobe-static', (m) => m.path) || 'ffprobe';
+// HyperFrames busca ffmpeg y ffprobe en el PATH: sus carpetas van delante.
+for (const bin of [FFPROBE, FFMPEG]) if (bin.includes('/')) process.env.PATH = path.dirname(bin) + path.delimiter + process.env.PATH;
 const PYTHON = process.env.PYTHON || 'python3';
 const {assemble} = await import(path.join(ROOT, 'src/assemble.mjs'));
 const {FONTS, SFX, AMBIENCES} = await import(path.join(ROOT, 'src/catalog.mjs'));

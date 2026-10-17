@@ -44,7 +44,7 @@ Repositorio y skill:
 En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe` (movida allí el 17-10 desde `~/genframe`; la skill se reenlazó con `npm run instalar-skill`).
 
 - **Node:** está en `~/.local/node/bin` y no en el PATH del sistema. Usa `PATH=~/.local/node/bin:$PATH node bin/genframe.mjs …`.
-- **ffmpeg:** no hay de sistema. El `.env` local tiene `FFMPEG=/Users/awsystems/Downloads/explicativo-lab/bin/ffmpeg`, y la herramienta añade esa carpeta al PATH para que HyperFrames encuentre `ffmpeg` y `ffprobe`. Si se borra el laboratorio de Descargas, instalar ffmpeg con Homebrew o poner otra ruta.
+- **ffmpeg y ffprobe:** vienen con `npm install` (paquetes `ffmpeg-static` 5.3.0 y `ffprobe-static` 3.1.0). La herramienta los pone delante en el PATH para que HyperFrames los encuentre. `FFMPEG`/`FFPROBE` en el `.env` solo hacen falta si se quieren otros. genframe ya no depende del laboratorio de Descargas: probado renderizando con el laboratorio oculto.
 - **Python:** `python3` con numpy 2.0.2 (para `src/audio.py`).
 - **`.env`:** copia de `.env.example`. Falta que el usuario ponga `ELEVENLABS_API_KEY` y, si quiere, `ELEVENLABS_VOICE_ID`. Modelo elegido: `eleven_multilingual_v2` (0,08 $ por cada 1.000 caracteres).
 - **GitHub:**
@@ -66,7 +66,9 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `src/assemble.mjs` | Monta el proyecto HyperFrames (ver §8). |
 | `src/audio.py` | Música compuesta (VSCO 2 o síntesis), efectos Kenney, ambientes sintetizados, ducking de la voz y loudnorm a −14 LUFS. |
 | `src/catalog.mjs` | Lo único fijo: tipografías (39 de Fontsource), transiciones, estilos de subtítulo, efectos, ambientes y límites de la música. |
-| `assets/` | Muestras VSCO 2 CE (piano, arpa, cuerdas), efectos Kenney (CC0), `countries.json`, `LICENCIAS.md`. |
+| `assets/` | Muestras VSCO 2 CE (piano, arpa, cuerdas), efectos Kenney (CC0), `countries.json`, `LICENCIAS.md`. Además, sin usar aún por el motor: `hdri/` (8 iluminaciones 360° CC0, para `RGBELoader`/entorno de Three.js), `textures/` (unas 50 texturas CC0 en JPG/PNG con sus mapas), `earth/` (Blue y Black Marble de la NASA, crédito obligatorio) y `geo/natural-earth/` (shapefiles 10m/50m: países, regiones, ciudades, costas, ríos, lagos, océanos). |
+| `referencias/videos/` | Los vídeos hechos a mano en el laboratorio que el usuario aprobó: `vox-gta.mp4`, `avion-marcha-atras.mp4`, `persona-gta.mp4`, `vox-programa.mp4`, `ciclo-agua.mp4`, `huso-horario-v1/v2.mp4`, `motor-manual.mp4`, `humo.mp4`. Son la vara de medir. |
+| `docs/historia-laboratorio/` | El motor del laboratorio del 14-10 (`motor-14-10/`: bucle con OpenAI y la biblioteca fija de modelos —castillos, ciudades, barcos, personas, A350, material de 1944— y la interfaz de videojuego; SOLO consulta de recetas, nunca para volver a meter modelos fijos), su README y el plan de 123 escenas del documental del Día D (`dia-d/`). |
 | `.claude/skills/genframe/` | `SKILL.md` (flujo, comandos, rúbrica y reglas) y `referencia/kit.md` y `referencia/taller.md`: los manuales que antes leía la IA de OpenAI; las notas de la skill explican cómo adaptarlos. |
 | `docs/historia-autake/` | Documentos de la época de Autake: diseño original, estudio de recursos libres con licencias verificadas y briefing del motor automático. |
 | `docs/encargos/` | Encargos pendientes (el short de Normandía). |

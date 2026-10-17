@@ -6,6 +6,10 @@ Todo lo que hay en esta carpeta y lo que el motor carga de `node_modules` permit
 |---|---|---|---|
 | `audio/kenney/` (efectos) | Kenney (kenney.nl): RPG Audio, Interface Sounds, Impact Sounds, Digital Audio | CC0 | Ninguna |
 | `samples/vsco2-ce/` (piano, arpa, cuerdas; convertidos a OGG) | Versilian Studios, VSCO 2 Community Edition | CC0 | Ninguna |
+| `hdri/` (8 iluminaciones 360°) | Poly Haven | CC0 | Ninguna |
+| `textures/ambientcg/`, `textures/polyhaven/` (unas 50 texturas: hormigón, yeso, madera, tela, metal, roca, ladrillo, papel, cartón…) | ambientCG, Poly Haven | CC0 | Ninguna |
+| `earth/` (la Tierra de día y de noche) | NASA Earth Observatory (Blue Marble, Black Marble) | Dominio público | Citar «NASA Earth Observatory» cuando se muestre |
+| `geo/natural-earth/` (países, regiones, ciudades, costas, ríos, lagos, océanos a 10m y 50m) | Natural Earth | Dominio público | Ninguna |
 | `countries.json` (nombres de países) | i18n-iso-countries | MIT | Ninguna |
 | `world-atlas` (fronteras) | Natural Earth vía world-atlas | Dominio público / ISC | Ninguna |
 | `es-atlas` (comunidades y provincias) | Instituto Geográfico Nacional vía es-atlas | CC BY 4.0 / ISC | Citar «© IGN» cuando se muestre |
