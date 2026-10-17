@@ -888,6 +888,148 @@
         hd.rotation.x = x0 + K.clamp(-Math.atan2(d.y, Math.hypot(d.x, d.z)), -0.6, 0.6) * k;
       });
     };
+    /* ---------------- decoración del entorno: que ningún plano quede con el suelo vacío ---------------- */
+    /**
+     * Viste el entorno alrededor de lo que ya hay en la escena (llámalo DESPUÉS de colocar las piezas principales: las rodea
+     * sin pisarlas). tipo:
+     *  - 'ciudad': calles en cuadrícula (calzada, aceras con bordillo, pasos de cebra o raíles de tranvía), plazas
+     *    adoquinadas donde no cabe calle, farolas, árboles, bancos, bocas de incendio, papeleras y manzanas de edificios al fondo.
+     *  - 'campo': hierba con matices, parcelas de cultivo, caminos de tierra, vallas, árboles, arbustos y piedras, y lomas al fondo.
+     *  - 'interior': suelo de tarima, alfombra y dos paredes con zócalo, ventanas y cuadros (fondo hacia −z).
+     * opts: centro ({x, z}; por defecto el centro de las piezas), radio (alcance), epoca ('clasica' años 1900-1950 | 'moderna'),
+     * manzana y calle (medidas de la cuadrícula), densidad (0-1), fondo (edificios o lomas lejanas), seed, colores {…}.
+     * El mobiliario cuenta como obstáculo (las personas lo rodean y el auditor lo vigila); calles y suelos, no.
+     */
+    W.decorar = (tipo = 'ciudad', {centro = null, radio = 1400, epoca = 'moderna', manzana = 520, calle = 110, acera = 34, densidad = 0.7, fondo = true, seed = 17, colores = {}} = {}) => {
+      const r = K.rand(seed);
+      const fps = objects.filter((o) => o.parent === scene && !o.userData.ghost && !o.userData.decor).map(footprint).filter(Boolean);
+      const c0 = centro ? toXZ(centro) : fps.length ? [fps.reduce((a, f) => a + f.x, 0) / fps.length, fps.reduce((a, f) => a + f.z, 0) / fps.length] : [0, 0];
+      const [cx, cz] = c0;
+      // Las calles solo las desvían las piezas grandes (edificios, vehículos); las personas pueden estar en la calle.
+      const bigFp = () => fps.filter((f) => Math.max(f.hb, f.hl) > 25);
+      const occupiedBig = (x, z, m = 4) => bigFp().some((f) => { const dx = x - f.x, dz = z - f.z, lx = dx * f.c - dz * f.s, lz = dx * f.s + dz * f.c; return Math.abs(lx) < f.hb + m && Math.abs(lz) < f.hl + m; });
+      const occupied = (x, z, m = 4) => fps.some((f) => { const dx = x - f.x, dz = z - f.z, lx = dx * f.c - dz * f.s, lz = dx * f.s + dz * f.c; return Math.abs(lx) < f.hb + m && Math.abs(lz) < f.hl + m; });
+      const flat = (w, d, mat, x, y, z, ry = 0) => { const m = new T.Mesh(new T.PlaneGeometry(w, d), mat); m.rotation.x = -Math.PI / 2; m.rotation.z = ry; m.position.set(x, y, z); m.receiveShadow = true; m.userData.decor = true; scene.add(m); return m; };
+      const slab = (w, h, d, color, x, y, z, ry = 0) => { const m = box(w, h, d, color, y + h / 2, {outline: 0.006}); m.position.x = x; m.position.z = z; m.rotation.y = ry; m.traverse((n) => { n.userData.decor = true; }); scene.add(m); return m; };
+      const prop = (g, x, z, ry = 0) => { // mobiliario: cuenta como obstáculo
+        g.position.set(x, terrainHeight ? terrainHeight(x, z) : 0, z); g.rotation.y = ry; scene.add(g);
+        g.updateMatrixWorld(true); const b = new T.Box3().setFromObject(g); b.min.sub(g.position); b.max.sub(g.position);
+        g.userData.local = {min: b.min, max: b.max}; g.userData.baseScale = 1; g.userData.model = g.name || 'decorado'; g.userData.decor = true; g.userData.grounded = true; g.userData.joints = {}; g.userData.actions = {};
+        objects.push(g); fps.push(footprint(g)); return g;
+      };
+      const tex = (w, h, rep, draw) => { const t = canvasTexture(w, h, draw); t.repeat.set(rep[0], rep[1]); return new T.MeshLambertMaterial({map: t}); };
+      const P = K.palette;
+      // ---- piezas del mobiliario (procedurales, según la época)
+      const farola = () => { const g = new T.Group(); g.name = 'farola';
+        if (epoca === 'clasica') { g.add(cyl(1.6, 2.4, 3, '#2a2c2e', 10, 1.5)); g.add(cyl(0.7, 0.9, 34, '#2a2c2e', 10, 19)); const gl = sphere(2.6, '#fff1c8', 36, {outline: 0.02, extra: {emissive: '#ffd27a', emissiveIntensity: 0.9}}); g.add(gl); g.add(cone(2, 2.4, '#2a2c2e', 10, 39.5)); }
+        else { g.add(cyl(0.9, 1.3, 60, '#5d6266', 10, 30)); const arm = box(14, 0.8, 0.8, '#5d6266', 59); arm.position.x = 6.5; g.add(arm); const hd = box(7, 1.4, 3, '#3c4044', 58.3); hd.position.x = 13; g.add(hd); const led = box(5, 0.3, 2.2, '#fff6dc', 57.5, {outline: 0, extra: {emissive: '#fff1c8', emissiveIntensity: 0.8}}); led.position.x = 13; g.add(led); }
+        return g; };
+      const arbol = () => { const g = new T.Group(); g.name = 'arbol'; const h = 34 + r() * 18; g.add(box(10, 0.6, 10, '#5a4a3a', 0.3, {outline: 0})); g.add(cyl(1.4, 2, h * 0.55, '#5a4232', 8, h * 0.275));
+        const greens = ['#5f7f45', '#6e8c4e', '#557545']; for (let i = 0; i < 4; i++) { const b = sphere(8 + r() * 5, greens[i % 3], 0, {outline: 0.03}); b.position.set((r() - 0.5) * 9, h * 0.62 + r() * h * 0.35, (r() - 0.5) * 9); b.scale.y = 0.85; g.add(b); } return g; };
+      const bancoCalle = () => { const g = new T.Group(); g.name = 'banco_calle'; const wood = '#8a5a34', iron = '#2a2c2e'; for (const sx of [-7, 7]) { g.add(f3(box(0.8, 4.5, 4.5, iron, 2.25), sx, 0, 0)); } g.add(box(17, 0.8, 4.4, wood, 4.6)); const back = box(17, 4, 0.7, wood, 7.4); back.position.z = -2; g.add(back); return g; };
+      const hidrante = () => { const g = new T.Group(); g.name = 'boca_incendios'; const col = epoca === 'clasica' ? '#3a4a3a' : '#b8322a'; g.add(cyl(1.6, 1.8, 6, col, 10, 3)); g.add(sphere(1.7, col, 6.2, {outline: 0.04})); for (const s2 of [-1, 1]) { const n = cyl(0.7, 0.7, 2, col, 8, 0); n.rotation.z = Math.PI / 2; n.position.set(s2 * 1.9, 4.2, 0); g.add(n); } return g; };
+      const papelera = () => { const g = new T.Group(); g.name = 'papelera'; g.add(cyl(2, 1.8, 7, epoca === 'clasica' ? '#3a3a36' : '#3f5a4a', 12, 3.5)); g.add(cyl(2.2, 2.2, 0.6, '#2a2a28', 12, 7.2)); return g; };
+      const f3 = (o, x, y, z) => { o.position.x = x; o.position.z = z; if (y) o.position.y += y; return o; };
+      if (tipo === 'ciudad') {
+        const asf = colores.asfalto || (epoca === 'clasica' ? '#4a4844' : '#3c3e42'), ace = colores.acera || '#a9a397', bord = colores.bordillo || '#c9c3b6';
+        // Suelo de plaza adoquinada bajo todo (lo que no es calle).
+        const paving = tex(256, 256, [radio / 22, radio / 22], (c, w, h) => { c.fillStyle = epoca === 'clasica' ? '#8d8679' : '#a39d92'; c.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 32) for (let x = (y / 32) % 2 ? 16 : 0; x < w; x += 32) { const v = (r() - 0.5) * 18; c.fillStyle = `rgba(${v > 0 ? 255 : 0},${v > 0 ? 250 : 0},${v > 0 ? 240 : 0},${Math.abs(v) / 120})`; c.fillRect(x + 1, y + 1, 30, 30); } c.strokeStyle = 'rgba(40,36,30,.35)'; c.lineWidth = 2; for (let y = 0; y <= h; y += 32) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); } for (let y = 0; y < h; y += 32) for (let x = (y / 32) % 2 ? 16 : 0; x <= w; x += 32) { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + 32); c.stroke(); } });
+        flat(radio * 2.4, radio * 2.4, paving, cx, 0.06, cz);
+        const asphalt = tex(256, 256, [1, 1], (c, w, h) => { c.fillStyle = asf; c.fillRect(0, 0, w, h); for (let i = 0; i < 900; i++) { c.fillStyle = r() < 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.08)'; c.fillRect(r() * w, r() * h, 2, 2); } });
+        // Cuadrícula: se elige el desplazamiento que menos calles hace pasar por debajo de las piezas.
+        const M = manzana, band = calle / 2 + acera;
+        let best = [0, 0], bestHits = Infinity;
+        for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { const ox = (i / 8) * M, oz = (j / 8) * M; let hits = 0; for (const f of bigFp()) { const dx = ((f.x - cx - ox) % M + M) % M, dz = ((f.z - cz - oz) % M + M) % M; const rr = Math.max(f.hb, f.hl); if (Math.min(dx, M - dx) < band + rr) hits++; if (Math.min(dz, M - dz) < band + rr) hits++; } if (hits < bestHits) { bestHits = hits; best = [ox, oz]; } }
+        const n = Math.ceil(radio / M) + 1;
+        const segFree = (x0, z0, x1, z1) => { const steps = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 12); for (let k = 0; k <= steps; k++) { const u = k / steps, x = x0 + (x1 - x0) * u, z = z0 + (z1 - z0) * u; if (occupiedBig(x, z, band)) return false; } return true; };
+        const furniture = [];
+        for (let a = -n; a <= n; a++) for (let b = -n; b < n; b++) for (const dir of [0, 1]) {
+          // Tramo de calle entre dos cruces: dir 0 = a lo largo de x (en z fija), dir 1 = a lo largo de z.
+          const line = (dir ? cx + best[0] : cz + best[1]) + a * M, s0 = (dir ? cz + best[1] : cx + best[0]) + b * M, s1 = s0 + M;
+          const [x0, z0, x1, z1] = dir ? [line, s0, line, s1] : [s0, line, s1, line];
+          if (Math.hypot((x0 + x1) / 2 - cx, (z0 + z1) / 2 - cz) > radio) continue;
+          if (!segFree(x0, z0, x1, z1)) continue;
+          const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, len = M - band * 2 + 2, ry = dir ? 0 : Math.PI / 2;
+          const road = new T.Mesh(new T.PlaneGeometry(calle, len), asphalt); road.rotation.x = -Math.PI / 2; road.rotation.z = ry; road.position.set(mx, 0.12, mz); road.receiveShadow = true; road.userData.decor = true; scene.add(road);
+          for (const sd of [-1, 1]) {
+            const ox = dir ? sd * (calle / 2 + acera / 2) : 0, oz = dir ? 0 : sd * (calle / 2 + acera / 2);
+            slab(dir ? acera : len, 0.9, dir ? len : acera, ace, mx + ox, 0, mz + oz);
+            const cb = dir ? sd * (calle / 2 + 0.9) : 0, cz2 = dir ? 0 : sd * (calle / 2 + 0.9);
+            slab(dir ? 1.8 : len, 1.2, dir ? len : 1.8, bord, mx + cb, 0, mz + cz2);
+          }
+          // Marcas: raya discontinua (moderna) o raíles de tranvía (clásica).
+          if (epoca === 'clasica') { for (const off of [-9, -2.5, 2.5, 9]) slab(dir ? 0.7 : len, 0.25, dir ? len : 0.7, '#7d7a74', mx + (dir ? off : 0), 0.1, mz + (dir ? 0 : off)); }
+          else for (let k = -len / 2 + 10; k < len / 2 - 10; k += 30) slab(dir ? 1.4 : 14, 0.2, dir ? 14 : 1.4, '#e9e4d2', mx + (dir ? 0 : k), 0.12, mz + (dir ? k : 0));
+          // Mobiliario a lo largo de las aceras.
+          for (let k = -len / 2 + 40; k < len / 2 - 30; k += 70 + r() * 40) for (const sd of [-1, 1]) {
+            if (r() > densidad) continue;
+            const off = calle / 2 + acera * 0.62, x = mx + (dir ? sd * off : k), z = mz + (dir ? k : sd * off);
+            if (occupied(x, z, 6) || furniture.some(([fx, fz]) => Math.hypot(fx - x, fz - z) < 22)) continue;
+            const kind = r(); const g = kind < 0.4 ? farola() : kind < 0.72 ? arbol() : kind < 0.84 ? bancoCalle() : kind < 0.93 ? hidrante() : papelera();
+            prop(g, x, z, dir ? (sd > 0 ? -Math.PI / 2 : Math.PI / 2) : (sd > 0 ? Math.PI : 0)); furniture.push([x, z]);
+          }
+          // Paso de cebra en los dos extremos (moderna).
+          if (epoca !== 'clasica') for (const e of [-1, 1]) for (let k = -calle / 2 + 8; k < calle / 2 - 6; k += 14) slab(dir ? 8 : 18, 0.22, dir ? 18 : 8, '#efeadb', mx + (dir ? k : e * (len / 2 - 14)), 0.12, mz + (dir ? e * (len / 2 - 14) : k));
+        }
+        // Plazas: mobiliario también en los huecos libres que no son calle (farolas, árboles y bancos alrededor de lo que hay).
+        for (let i = 0; i < 160 * densidad; i++) {
+          const a = r() * Math.PI * 2, d = 60 + Math.sqrt(r()) * radio * 0.75, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+          if (occupied(x, z, 12) || furniture.some(([fx, fz]) => Math.hypot(fx - x, fz - z) < 60)) continue;
+          const kind = r(); const g = kind < 0.45 ? farola() : kind < 0.8 ? arbol() : bancoCalle();
+          prop(g, x, z, Math.round(r() * 4) * (Math.PI / 2)); furniture.push([x, z]);
+        }
+        // Cruces (asfalto).
+        for (let a = -n; a <= n; a++) for (let b = -n; b <= n; b++) { const x = cx + best[0] + a * M, z = cz + best[1] + b * M; if (Math.hypot(x - cx, z - cz) > radio || occupiedBig(x, z, band)) continue; flat(calle, calle, asphalt, x, 0.11, z); }
+        // Manzanas de edificios al fondo (siluetas que la bruma funde), solo donde no hay nada.
+        if (fondo) {
+          const win = canvasTexture(128, 256, (c, w, h) => { c.fillStyle = '#5a5e62'; c.fillRect(0, 0, w, h); for (let y = 6; y < h; y += 14) for (let x = 6; x < w; x += 14) { c.fillStyle = r() < 0.25 ? '#e8c27a' : r() < 0.5 ? '#3c4246' : '#474d52'; c.fillRect(x, y, 7, 9); } });
+          const tones = ['#9a948a', '#8a8378', '#a8a196', '#7d7a74', '#b2a994'];
+          for (let i = 0; i < 70; i++) {
+            const a = r() * Math.PI * 2, d = radio * (0.95 + r() * 0.9), x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+            if (occupied(x, z, 120)) continue;
+            const w = 120 + r() * 160, h = 220 + r() * (epoca === 'clasica' ? 900 : 1500), dd = 120 + r() * 160;
+            const tx = win.clone(); tx.needsUpdate = true; tx.repeat.set(w / 50, h / 90);
+            const mats = [new T.MeshLambertMaterial({map: tx}), new T.MeshLambertMaterial({map: tx}), new T.MeshLambertMaterial({color: tones[i % 5]}), new T.MeshLambertMaterial({color: tones[i % 5]}), new T.MeshLambertMaterial({map: tx}), new T.MeshLambertMaterial({map: tx})];
+            const m = new T.Mesh(new T.BoxGeometry(w, h, dd), mats); m.position.set(x, h / 2, z); m.rotation.y = Math.round(r() * 4) * (Math.PI / 2); m.castShadow = false; m.receiveShadow = true; m.userData.decor = true; scene.add(m);
+          }
+        }
+      } else if (tipo === 'campo') {
+        const grassMat = tex(256, 256, [radio / 25, radio / 25], (c, w, h) => { c.fillStyle = colores.hierba || '#7c9450'; c.fillRect(0, 0, w, h); for (let i = 0; i < 2600; i++) { c.fillStyle = ['rgba(60,80,30,.25)', 'rgba(160,180,90,.22)', 'rgba(110,130,60,.25)'][i % 3]; c.fillRect(r() * w, r() * h, 2 + r() * 3, 3 + r() * 5); } });
+        flat(radio * 2.6, radio * 2.6, grassMat, cx, 0.06, cz);
+        // Parcelas de cultivo con surcos, donde no hay nada.
+        const crops = ['#b9a35a', '#8aa04e', '#a38a5a', '#c2b26a'];
+        for (let i = 0; i < 22; i++) { const a = r() * Math.PI * 2, d = radio * (0.12 + Math.pow(r(), 1.4) * 0.8), x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, w = 160 + r() * 220, dd = 120 + r() * 200; if (occupied(x, z, Math.max(w, dd) * 0.6)) continue; const col = crops[i % 4]; const fm = tex(64, 64, [w / 40, 1], (c, W2, H2) => { c.fillStyle = col; c.fillRect(0, 0, W2, H2); c.fillStyle = 'rgba(0,0,0,.18)'; for (let x2 = 0; x2 < W2; x2 += 8) c.fillRect(x2, 0, 3, H2); }); flat(w, dd, fm, x, 0.09, z, r() * Math.PI); }
+        // Camino de tierra que cruza.
+        const dirt = new T.MeshLambertMaterial({color: colores.tierra || '#a88e66'});
+        for (let k = -radio; k < radio; k += 30) { const x = cx + k, z = cz + Math.sin(k / 260) * 90 + radio * 0.12; if (!occupied(x, z, 20)) flat(34, 32, dirt, x, 0.1, z); }
+        // Vallas, árboles, arbustos y piedras.
+        for (let i = 0; i < 170 * densidad; i++) {
+          const a = r() * Math.PI * 2, d = radio * (0.06 + Math.pow(r(), 1.6) * 0.95), x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+          if (occupied(x, z, 14)) continue;
+          const k = r(); let g;
+          if (k < 0.4) g = arbol(); else if (k < 0.7) { g = new T.Group(); g.name = 'arbusto'; for (let j = 0; j < 3; j++) { const b = sphere(4 + r() * 3, ['#5f7f45', '#6e8c4e'][j % 2], 0, {outline: 0.03}); b.position.set((r() - 0.5) * 6, 2.5, (r() - 0.5) * 6); g.add(b); } }
+          else if (k < 0.85) { g = new T.Group(); g.name = 'valla'; for (let j = 0; j < 5; j++) g.add(f3(box(1.2, 10, 1.2, '#7a5a3a', 5), j * 12 - 24, 0, 0)); g.add(box(52, 1, 0.8, '#8a6a46', 8)); g.add(box(52, 1, 0.8, '#8a6a46', 4)); }
+          else { g = new T.Group(); g.name = 'piedra'; const st = mesh(new T.DodecahedronGeometry(3 + r() * 4, 0), '#8a8578'); st.position.y = 2; st.scale.y = 0.6; g.add(st); }
+          prop(g, x, z, r() * Math.PI * 2);
+        }
+        if (fondo) for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2, d = radio * (1.3 + r() * 0.5); const hill = sphere(1, '#6f8a4c', 0, {outline: 0}); hill.scale.set(300 + r() * 400, 80 + r() * 160, 300 + r() * 300); hill.position.set(cx + Math.cos(a) * d, -20, cz + Math.sin(a) * d); hill.traverse((q) => { q.userData.decor = true; }); scene.add(hill); }
+      } else if (tipo === 'interior') {
+        const plank = tex(256, 256, [radio / 80, radio / 80], (c, w, h) => { for (let i = 0; i < 16; i++) { c.fillStyle = ['#7a5434', '#6c4a2e', '#845c3a'][i % 3]; c.fillRect(0, i * 16, w, 16); c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(0, i * 16, w, 1.5); c.fillRect(((i * 97) % w), i * 16, 2, 16); } });
+        flat(radio * 2, radio * 2, plank, cx, 0.06, cz);
+        const rug = tex(128, 128, [1, 1], (c, w, h) => { c.fillStyle = colores.alfombra || '#7a2e2a'; c.fillRect(0, 0, w, h); c.strokeStyle = P.accent || '#d9a84e'; c.lineWidth = 6; c.strokeRect(10, 10, w - 20, h - 20); c.lineWidth = 2; c.strokeRect(22, 22, w - 44, h - 44); });
+        flat(radio * 0.7, radio * 0.45, rug, cx, 0.1, cz);
+        const wallH = Math.max(60, radio * 0.45), wz = cz - radio * 0.55, wx = cx - radio * 0.75;
+        const wallC = colores.pared || '#9a9078';
+        for (const [w, x, z, ry] of [[radio * 1.6, cx, wz, 0], [radio * 1.1, wx, cz, Math.PI / 2]]) {
+          const wall = box(w, wallH, 2, wallC, wallH / 2, {outline: 0}); wall.position.x = x; wall.position.z = z; wall.rotation.y = ry; wall.traverse((q) => { q.userData.decor = true; }); scene.add(wall);
+          const dado = box(w, wallH * 0.28, 3, '#5a3e28', wallH * 0.14, {outline: 0}); dado.position.set(x + (ry ? 1 : 0), wallH * 0.14, z + (ry ? 0 : 1)); dado.rotation.y = ry; scene.add(dado);
+        }
+        for (let i = 0; i < 3; i++) { const x = cx - radio * 0.5 + i * radio * 0.5; const win = box(radio * 0.22, wallH * 0.38, 1, '#bcd3e0', wallH * 0.6, {outline: 0.02, extra: {emissive: '#d8e8f2', emissiveIntensity: 0.35}}); win.position.set(x, wallH * 0.6, wz + 1.6); scene.add(win); const fr = box(radio * 0.24, wallH * 0.4, 0.8, '#e9e4d6', wallH * 0.6, {outline: 0}); fr.position.set(x, wallH * 0.6, wz + 1.1); scene.add(fr); }
+        for (let i = 0; i < 2; i++) { const pic = box(1, wallH * 0.22, radio * 0.16, '#3a3028', wallH * 0.62, {outline: 0.02}); pic.position.set(wx + 1.6, wallH * 0.62, cz - radio * 0.2 + i * radio * 0.4); scene.add(pic); }
+      }
+      return W;
+    };
+
     /** Sacude la cámara en t (amount ≈ 1 un golpe fuerte); se apaga sola en medio segundo. */
     const shakes = [];
     W.shake = (t, amount = 1) => shakes.push({t, a: amount});
@@ -1022,6 +1164,9 @@
       for (const fn of updaters) fn(t);
       // Lo que está apoyado en el suelo lo sigue aunque se mueva (salvo lo que flota, vuela o anda por su cuenta).
       if (terrainHeight) for (const o of objects) if (o.userData.grounded && !o.userData.floating && !(o.userData.walking || []).some((w) => t >= w.t0 - 0.1 && t <= w.t1 + 0.5) && o.parent === scene) o.position.y = terrainHeight(o.position.x, o.position.z);
+      // La decoración nunca tapa el plano: el mobiliario que queda entre la cámara y lo que mira se oculta en este fotograma.
+      { const cp = camera.position, L = new T.Vector3().subVectors(lookAt, cp), len2 = L.lengthSq(), q = new T.Vector3();
+        for (const o of objects) { if (!o.userData.decor) continue; q.set(o.position.x, o.position.y + (o.userData.local ? (o.userData.local.max.y - o.userData.local.min.y) / 2 : 5), o.position.z); const u = K.clamp(q.clone().sub(cp).dot(L) / len2, 0, 1); const d = q.distanceTo(cp.clone().addScaledVector(L, u)); const rad = o.userData.local ? Math.max(o.userData.local.max.x - o.userData.local.min.x, o.userData.local.max.y - o.userData.local.min.y, o.userData.local.max.z - o.userData.local.min.z) * 0.6 : 8; o.visible = !(u > 0 && u < 0.85 && d < rad + Math.sqrt(len2) * 0.06); } }
       renderer.toneMappingExposure = exposure;
       const el = (S.elev * Math.PI) / 180, az = (S.az * Math.PI) / 180;
       sun.position.set(cam.x + Math.cos(el) * Math.sin(az) * 600, Math.sin(el) * 600 + 80, cam.z + Math.cos(el) * Math.cos(az) * 600);
@@ -1089,6 +1234,18 @@
           if (Math.abs(v / nat - 1) > 0.4) out.push({tipo: 'pies', grave: false, texto: `«${o.userData.model}» ${acts[0].name} a ${(v / 10).toFixed(1)} m/s con zancada de ${(nat / 10).toFixed(1)} m/s: los pies patinan (usa w.walk)`});
         }
         o.userData._auditPrev = {t, x: o.position.x, z: o.position.z};
+      }
+      // Suelo vacío: qué parte del plano es el suelo liso de base, sin nada encima (pide decoración).
+      if (ground === 'none' && !terrainHeight && !ocean) {
+        const rc = new T.Raycaster(); rc.camera = camera;
+        const targets = scene.children.filter((n) => !n.isLight && n.visible !== false);
+        let bare = 0, total = 0;
+        for (let i = 0; i < 9; i++) for (let j = 0; j < 14; j++) {
+          rc.setFromCamera(new T.Vector2(-0.9 + (i / 8) * 1.8, -0.55 + (j / 13) * 1.45), camera);
+          const hit = rc.intersectObjects(targets, true).find((h) => h.object.visible !== false && !(h.object.isSprite) && !(h.object.material && h.object.material.colorWrite === false));
+          total++; if (hit && hit.object === seaMesh) bare++;
+        }
+        if (bare / total > 0.2) out.push({tipo: 'vacio', grave: false, texto: `suelo vacío en el ${Math.round((bare / total) * 100)} % del plano: decora el entorno (w.decorar)`});
       }
       return out;
     };

@@ -248,6 +248,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    - **Herramientas nuevas:** `w.walk` (A*, sin pies que patinan), `w.formation`, `w.scatter`, `w.point`, `w.look`, `w.shake`; efectos con profundidad, anclables a piezas, más `fogonazo` y `columna`.
    - **Textos y mapas:** títulos que se encogen solos para caber, mapas a sangre y `K.map.labels`.
    - **Control:** comando `auditar` integrado en `render` y banco `npm test`.
+   - **Decoración (18-10):** `w.decorar('ciudad'|'campo'|'interior', {epoca})`, para que ningún plano tenga el suelo vacío; el auditor avisa de «suelo vacío» y el mobiliario no tapa nunca la cámara. Segundo vídeo: `proyectos/crack29/crack29.mp4`, el crack del 29 (60,3 s, ≈0,06 $ de voz).
 4. **Generadores pendientes:** aviones, vehículos, edificios, vegetación, animales y personajes 2D.
 5. **Mejoras de la herramienta:**
    - `fotos --escena` con zoom de detalle;

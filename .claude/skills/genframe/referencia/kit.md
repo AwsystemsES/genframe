@@ -104,6 +104,7 @@ w.formation('avion', 5, {x, z}, {tipo: 'V'|'fila'|'columna'|'rejilla', rotate, y
 w.scatter('roca', 20, {x, z, w, d} | {x, z, r}, {seed, separacion: 1.15, giro: 'azar'});      // reparto sin que se toquen entre sí ni con lo que hay
 w.point(persona, t, destino, {brazo: 'der', hasta});  w.look(persona, t, destino);           // señalar y mirar a una pieza, punto {x,y,z} o [lon, lat]
 w.shake(t, 1);                                                                                  // sacudida de cámara
+w.decorar('ciudad'|'campo'|'interior', {epoca: 'clasica'|'moderna', radio, manzana, calle, densidad, fondo, seed, colores});  // viste el entorno (ver abajo)
 w.country('fr', t, '#c84d3b');  w.label('Granada', [lon, lat], t, tFin, {style: 'pin'|'city'|'title', color});
 w.route([[lon, lat], …], t, dur, {color, arc: 0});
 w.fx('fire'|'smoke'|'explosion'|'rain'|'sparkle'|'fogonazo'|'columna', dónde, t0, t1, {size, cada, dir, material: 'arena'|'agua'|'tierra', shake, wind, offset});
@@ -127,6 +128,17 @@ w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(
   - **Cámara segura:** nunca se mete en el agua ni en el terreno, y se eleva si una ola tapa lo que mira.
   - **Cascos abiertos:** el agua no se dibuja dentro de los cascos de `f.gen.hull` sin cubierta.
   - **Mar:** crestas afiladas (Gerstner), reflejo del cielo, espuma en la línea de flotación y estela al navegar. `ocean` admite además `gerstner`, `reflejo`, `roughness`, `foamSlope`.
+- Nunca un suelo vacío: en cuanto una escena 3D sin mar ni terreno tenga suelo a la vista, llama a `w.decorar` DESPUÉS de colocar las piezas principales y la gente:
+  - **`'ciudad'`:**
+    - calles en cuadrícula con aceras y bordillo;
+    - pasos de cebra y raya discontinua (`epoca: 'moderna'`) o raíles de tranvía (`'clasica'`);
+    - plazas adoquinadas donde no cabe calle;
+    - farolas de la época, árboles, bancos, bocas de incendio y papeleras;
+    - manzanas de edificios al fondo.
+  - **`'campo'`:** hierba, parcelas, camino, vallas, árboles, arbustos, piedras y lomas.
+  - **`'interior'`:** tarima, alfombra y paredes con zócalo, ventanas y cuadros hacia −z.
+
+  La decoración rodea lo que ya hay. Las calles solo las desvían las piezas grandes, y el mobiliario cuenta como obstáculo. El mobiliario que se interpone entre la cámara y lo que mira se oculta solo. Si falta, el auditor avisa con «suelo vacío».
 - Personas que se desplazan: SIEMPRE `w.walk`. Mover una persona con `K.tl` o `w.move` mientras anda hace que los pies patinen, y el auditor lo marca.
 - Grupos (aviones, barcos, gente, rocas, árboles): `w.formation` o `w.scatter`, nunca posiciones a ojo que puedan solaparse.
 - Escenas ricas: varios modelos del reparto juntos, repetidos con variaciones (`rotate`, `scale`, parámetros), cámara con intención y algo vivo (acciones, partículas, deriva). Nunca un objeto solo en un plano vacío.

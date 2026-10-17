@@ -308,7 +308,7 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
   luma.forEach((v, i) => { if (v < 40) issues.push({tipo: 'oscuro', grave: false, texto: `fotograma oscuro (brillo ${v.toFixed(0)}): sube la exposición o aclara la paleta`, t: r3(i * paso), escena: sceneAt(i * paso)}); });
   // Agrupa lo repetido en tramos.
   const groups = new Map();
-  for (const q of issues) { const k = q.escena + '|' + q.tipo + '|' + q.texto.replace(/\(\d+(\.\d+)? m\)/, '(…)'); if (!groups.has(k)) groups.set(k, {...q, desde: q.t, hasta: q.t, n: 0}); const g = groups.get(k); g.desde = Math.min(g.desde, q.t); g.hasta = Math.max(g.hasta, q.t); g.n++; g.grave = g.grave || q.grave; }
+  for (const q of issues) { const k = q.escena + '|' + q.tipo + '|' + q.texto.replace(/\d+([.,]\d+)?/g, '#'); if (!groups.has(k)) groups.set(k, {...q, desde: q.t, hasta: q.t, n: 0}); const g = groups.get(k); g.desde = Math.min(g.desde, q.t); g.hasta = Math.max(g.hasta, q.t); g.n++; g.grave = g.grave || q.grave; }
   const list = [...groups.values()].sort((a, b) => a.desde - b.desde);
   // Un choque o un problema de cámara de un solo instante suelto es grave igual; un aviso suelto de texto en una transición, no.
   // Lo de un solo instante en los textos suele ser una transición (dos rótulos que se cruzan): no cuenta.
