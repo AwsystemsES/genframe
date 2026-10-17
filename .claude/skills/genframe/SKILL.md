@@ -11,7 +11,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 
 ## Dónde está todo
 
-- Repositorio: la carpeta que contiene `bin/genframe.mjs` (normalmente `~/genframe`). Ejecuta los comandos desde ahí: `node bin/genframe.mjs <comando>`.
+- Repositorio: la carpeta que contiene `bin/genframe.mjs` (en el Mac del usuario, `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe`). Ejecuta los comandos desde ahí: `node bin/genframe.mjs <comando>`.
 - Cada vídeo: `proyectos/<nombre>/`.
   - `guion.txt`: la locución; cada frase termina en `.`, `?`, `!` o `…`.
   - `plan.json`: formato, voz, dirección de arte, escenas y sonido.

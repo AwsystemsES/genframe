@@ -20,7 +20,7 @@ Nació dentro de la app Autake como tipo de vídeo «Vídeo explicativo», con u
 2. **Seguirlo aquí, con Claude dirigiendo**, porque los vídeos que Claude programó a mano con la caja de herramientas (un VOX estilo GTA San Andreas y un A350 marcha atrás) quedaron muy por encima de los automáticos.
 
 Repositorio y skill:
-- **Repositorio:** https://github.com/AwsystemsES/genframe (privado), clonado en el Mac del usuario en `~/genframe`.
+- **Repositorio:** https://github.com/AwsystemsES/genframe (privado), en el Mac del usuario en `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe` (antes `~/genframe`).
 - **Skill:** `.claude/skills/genframe/SKILL.md`, enlazada en `~/.claude/skills/genframe` (`npm run instalar-skill`). Aparece como `/genframe`.
 
 ## 2. Reglas del usuario (obligatorias)
@@ -41,7 +41,7 @@ Repositorio y skill:
 
 ## 3. Instalación y entorno
 
-En el Mac del usuario ya está todo instalado en `~/genframe`.
+En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe` (movida allí el 17-10 desde `~/genframe`; la skill se reenlazó con `npm run instalar-skill`).
 
 - **Node:** está en `~/.local/node/bin` y no en el PATH del sistema. Usa `PATH=~/.local/node/bin:$PATH node bin/genframe.mjs …`.
 - **ffmpeg:** no hay de sistema. El `.env` local tiene `FFMPEG=/Users/awsystems/Downloads/explicativo-lab/bin/ffmpeg`, y la herramienta añade esa carpeta al PATH para que HyperFrames encuentre `ffmpeg` y `ffprobe`. Si se borra el laboratorio de Descargas, instalar ffmpeg con Homebrew o poner otra ruta.
