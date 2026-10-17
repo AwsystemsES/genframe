@@ -194,7 +194,7 @@
        * center [lon, lat]: punto que queda en medio (el globo 'orthographic' mira ahí; los planos giran solo en longitud,
        * útil en el Pacífico). Sin center, se gira hacia lo que se encuadra. rotate es el giro crudo de d3 ([-lon, -lat]).
        */
-      world(parent, {x = 0, y = 0, w = K.W, h = K.H, projection = 'equalEarth', focus = null, center = null, rotate = null, fill = 'rgba(0,0,0,.06)', stroke = K.palette.ink || '#222', strokeWidth = 1} = {}) {
+      world(parent, {x = 0, y = 0, w = K.W, h = K.H, projection = 'equalEarth', focus = null, center = null, rotate = null, fill = 'rgba(0,0,0,.06)', stroke = K.palette.ink || '#222', strokeWidth = 1, bleed = 'auto', fade = 'auto'} = {}) {
         const topo = (D.geo || {}).world;
         const fc = topojson.feature(topo, topo.objects.countries);
         const iso = {};
@@ -223,7 +223,11 @@
         }
         if (globe && target === fc) proj.fitExtent([[0, 0], [w, h]], {type: 'Sphere'});
         else proj.fitExtent([[0, 0], [w, h]], target);
-        const svg = K.svg(parent, x, y, w, h, {overflow: 'hidden'});
+        // A sangre: un mapa grande (fondo) sigue dibujándose fuera de su caja hasta el borde del lienzo, sin cortes rectos.
+        // Las coordenadas siguen siendo las de la caja (project, centroid y lo que se dibuje en svg). Uno pequeño se funde en sus bordes.
+        const toBleed = bleed === 'auto' ? w >= K.W * 0.6 : !!bleed;
+        const svg = toBleed ? K.svg(parent, 0, 0, K.W, K.H, {viewBox: `${-x} ${-y} ${K.W} ${K.H}`, overflow: 'hidden'}) : K.svg(parent, x, y, w, h, {overflow: 'hidden'});
+        if (!toBleed && (fade === 'auto' || fade)) { const m = 'linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent), linear-gradient(180deg, transparent, #000 6%, #000 94%, transparent)'; svg.style.webkitMaskImage = svg.style.maskImage = m; svg.style.webkitMaskComposite = 'source-in'; svg.style.maskComposite = 'intersect'; }
         const path = d3.geoPath(proj);
         const countries = {};
         for (const f of fc.features) {
@@ -233,7 +237,7 @@
           const code = iso[f.id];
           if (code) countries[code] = p;
         }
-        return {svg, countries, project: (lonlat) => proj(lonlat), centroid: (code) => { const f = fc.features.find((g) => iso[g.id] === code); return f ? path.centroid(f) : null; }, name: (code) => (D.countries[String(code).toUpperCase()] || {}).es};
+        return {svg, countries, box: {x, y, w, h}, project: (lonlat) => proj(lonlat), centroid: (code) => { const f = fc.features.find((g) => iso[g.id] === code); return f ? path.centroid(f) : null; }, name: (code) => (D.countries[String(code).toUpperCase()] || {}).es};
       },
       /** España por comunidades autónomas o provincias (IGN), con Canarias en un recuadro. */
       spain(parent, {x = 0, y = 0, w = 900, h = 760, level = 'ccaa', fill = 'rgba(255,255,255,.6)', stroke = K.palette.ink || '#222', strokeWidth = 1.4} = {}) {
@@ -313,10 +317,124 @@
     return g;
   };
 
+  /**
+   * Rótulos de lugares sobre un mapa de K.map.world sin solapes: cada nombre busca un hueco alrededor de su punto
+   * (arriba, abajo, a los lados, cada vez más lejos), dentro de la zona segura, y si queda lejos lleva línea guía.
+   * items: [{text, ll: [lon, lat], color}]. opts: parent (por defecto el padre del mapa), size, color, t (aparecen), stagger, dot.
+   * Devuelve [{el, line, dot, x, y}] (x, y del punto en el lienzo).
+   */
+  K.map.labels = function (m, items, {parent = null, size = K.vertical ? 46 : 40, color = K.palette.accent || '#e5ad58', t = null, stagger = 0.25, dot = true, font = 'title'} = {}) {
+    const host = parent || m.svg.parentNode;
+    const ox = m.box ? m.box.x : 0, oy = m.box ? m.box.y : 0;
+    const sv = K.svg(host, 0, 0, K.W, K.H);
+    const pts = items.map((it) => { const [px, py] = m.project(it.ll); return [px + ox, py + oy]; });
+    const placed = [], out = [];
+    const S = K.safe, pad = 12;
+    // Los textos que ya hay en pantalla (titulares, rótulos) también cuentan como ocupados.
+    const lay = (el) => { let x = 0, y = 0, n = el; while (n && n !== host && n.id !== 'root') { x += n.offsetLeft || 0; y += n.offsetTop || 0; n = n.offsetParent; } return {x0: x, y0: y, x1: x + el.offsetWidth, y1: y + el.offsetHeight}; };
+    (host.closest('.scene-root') || host).querySelectorAll('.title, .label, [data-fit="si"]').forEach((el) => { if (el.offsetWidth) placed.push(lay(el)); });
+    const fits = (r) => r.x0 >= S.left && r.x1 <= S.right && r.y0 >= S.top && r.y1 <= S.bottom && !placed.some((q) => r.x0 < q.x1 + pad && r.x1 > q.x0 - pad && r.y0 < q.y1 + pad && r.y1 > q.y0 - pad) && !pts.some(([px, py]) => px > r.x0 - 16 && px < r.x1 + 16 && py > r.y0 - 16 && py < r.y1 + 16);
+    items.forEach((it, i) => {
+      const [px, py] = pts[i], wd = String(it.text).length * size * 0.66 + 8, ht = size * 1.15;
+      const dirs = K.vertical ? [[0, -1], [0, 1], [1, 0], [-1, 0], [1, -1], [-1, -1], [1, 1], [-1, 1]] : [[1, 0], [-1, 0], [0, -1], [0, 1], [1, -1], [-1, -1], [1, 1], [-1, 1]];
+      let best = null;
+      for (const d of [1.1, 2, 3, 4.2, 5.5]) {
+        for (const [dx, dy] of dirs) {
+          const cx = px + dx * (wd / 2 + size * 0.5) * (dx ? 1 : 0) + dx * size * (d - 1), cy = py + dy * (ht / 2 + size * 0.4) + dy * size * (d - 1) * 1.2;
+          const r = {x0: cx - wd / 2, x1: cx + wd / 2, y0: cy - ht / 2, y1: cy + ht / 2, cx, cy, d};
+          if (fits(r)) { best = r; break; }
+        }
+        if (best) break;
+      }
+      if (!best) { const cx = K.clamp(px, S.left + wd / 2, S.right - wd / 2), cy = py - ht; best = {x0: cx - wd / 2, x1: cx + wd / 2, y0: cy - ht / 2, y1: cy + ht / 2, cx, cy, d: 1}; }
+      placed.push(best);
+      const c = it.color || color;
+      const el = K.box(host, best.x0, best.y0, {w: wd, cls: font, html: it.text, style: {fontSize: size + 'px', lineHeight: ht + 'px', textAlign: 'center', color: c, whiteSpace: 'nowrap', textShadow: '0 3px 0 rgba(0,0,0,.35), 0 8px 22px rgba(0,0,0,.55)'}});
+      const ex = K.clamp(px, best.x0, best.x1), ey = py < best.y0 ? best.y0 : py > best.y1 ? best.y1 : best.cy;
+      const line = Math.hypot(ex - px, ey - py) > size * 0.6 ? K.shape(sv, 'line', {x1: px, y1: py, x2: ex, y2: ey}, {stroke: c, strokeWidth: 4, strokeLinecap: 'round'}) : null;
+      const dt = dot ? K.shape(sv, 'circle', {cx: px, cy: py, r: Math.max(8, size * 0.28)}, {fill: c, stroke: '#101C29', strokeWidth: 4, transformBox: 'fill-box', transformOrigin: 'center'}) : null;
+      if (t !== null) { const ti = typeof it.t === 'number' ? it.t : t + i * stagger; if (dt) K.show(dt, ti - 0.05, {from: {scale: 0}, dur: 0.3, ease: 'outBack'}); if (line) K.draw(line, ti, 0.25); K.show(el, ti + 0.05, {from: {y: py < best.cy ? 16 : -16}, dur: 0.3}); }
+      out.push({el, line, dot: dt, x: px, y: py});
+    });
+    return out;
+  };
+
+  /**
+   * Titular que nunca se sale: se centra en la zona segura y, si el texto no cabe, reduce su cuerpo (también lo hace el
+   * ajuste automático con cualquier .title o .label). opts: y, size, cls ('title'), color, align, maxWidth, scrim (franja oscura detrás).
+   */
+  K.title = function (parent, html, {y = K.vertical ? 240 : 120, size = K.vertical ? 120 : 110, cls = 'title', color = K.palette.ink, align = 'center', maxWidth = null, scrim = false, style = {}} = {}) {
+    const S = K.safe, wmax = maxWidth || S.right - S.left;
+    const el = K.box(parent, S.left + (S.right - S.left - wmax) / 2, y, {w: wmax, cls, html, style: {fontSize: size + 'px', textAlign: align, color, textShadow: '0 4px 0 rgba(0,0,0,.35), 0 12px 34px rgba(0,0,0,.6)', ...(scrim ? {background: 'linear-gradient(180deg, rgba(10,14,20,.0), rgba(10,14,20,.55) 25%, rgba(10,14,20,.55) 75%, rgba(10,14,20,0))', padding: '0.15em 0'} : {}), ...style}});
+    el.dataset.fit = 'si';
+    return el;
+  };
+
+  /* ---- ajuste automático de textos: ningún titular ni rótulo se sale de la zona segura (en cualquier vídeo) ---- */
+  const layoutLeft = (el) => { let x = 0, n = el; while (n && !n.classList?.contains('scene-root') && n.id !== 'root' && n.id !== 'overlay') { x += n.offsetLeft || 0; n = n.offsetParent; } return x; };
+  K._fitTexts = function () {
+    if (document.fonts && document.fonts.status !== 'loaded') return;
+    const S = K.safe;
+    document.querySelectorAll('.scene-root .title, .scene-root .label, #overlay .title, [data-fit="si"]').forEach((el) => {
+      if (el.dataset.fit === 'no' || !el.offsetParent) return;
+      const key = el.innerHTML.length + '|' + el.textContent;
+      if (el._fitKey === key) return;
+      el._fitKey = key;
+      const cs = getComputedStyle(el);
+      const orig = el._fitOrig || parseFloat(cs.fontSize);
+      el._fitOrig = orig;
+      if (orig < 30 || cs.whiteSpace === 'nowrap' && el.closest('[data-label3d]')) return;
+      el.style.fontSize = orig + 'px';
+      let wrap = el.querySelector(':scope > .fitwrap');
+      if (!wrap) { wrap = document.createElement('span'); wrap.className = 'fitwrap'; wrap.style.display = 'inline-block'; while (el.firstChild) wrap.appendChild(el.firstChild); el.appendChild(wrap); }
+      // Ancho máximo que respeta la zona segura. Un texto que cabe en su caja se alinea como diga la caja; uno que la desborda
+      // se pinta desde el inicio de la caja. Se elige el mayor ancho válido de los dos casos.
+      const bx = layoutLeft(el), bw = el.offsetWidth, width = wrap.offsetWidth, ta = cs.textAlign, L = S.left, R = S.right;
+      const inBox = ta === 'center' ? Math.min(bw, 2 * Math.min(bx + bw / 2 - L, R - bx - bw / 2)) : ta === 'right' || ta === 'end' ? Math.min(bw, bx + bw - L) : Math.min(bw, R - bx);
+      const over = bx >= L ? R - bx : 0;
+      const allowed = Math.max(inBox, over > bw ? over : 0);
+      const k = allowed > 0 ? Math.min(1, allowed / Math.max(1, width)) : Math.min(1, (R - L) / Math.max(1, width));
+      // Se encoge hasta lo que haga falta (mínimo 30 %); si ni así cabe, se permite partir la palabra.
+      if (k < 0.995) el.style.fontSize = Math.max(orig * 0.3, orig * k * 0.97) + 'px';
+      if (k < 0.3) el.style.overflowWrap = 'anywhere';
+    });
+  };
+
+  /**
+   * Auditoría de los textos visibles en t: cortados por el borde, fuera de la zona segura, metidos en la franja de
+   * subtítulos o solapados entre sí. Devuelve [{tipo, grave, texto}]. La usa «genframe auditar».
+   */
+  K.auditDom = function () {
+    const S = K.safe, out = [], seen = [];
+    const visible = (el) => { let o = 1, n = el; while (n && n !== document.body) { const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden') return 0; o *= parseFloat(cs.opacity); n = n.parentElement; } return o; };
+    const walker = document.createTreeWalker(document.getElementById('root') || document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.textContent.trim()) continue;
+      const el = n.parentElement;
+      if (!el || el.closest('.cap') || el.closest('svg')) continue;
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      if (fs < 24 || visible(el) < 0.35) continue;
+      range.selectNodeContents(n);
+      const r = range.getBoundingClientRect();
+      if (r.width < 2) continue;
+      const txt = n.textContent.trim().slice(0, 40);
+      if (r.left < -2 || r.right > K.W + 2 || r.top < -2 || r.bottom > K.H + 2) out.push({tipo: 'texto', grave: true, texto: `«${txt}» se sale del lienzo`});
+      else if (r.left < S.left - 6 || r.right > S.right + 6) out.push({tipo: 'texto', grave: false, texto: `«${txt}» se sale de la zona segura por los lados`});
+      if (fs >= 56 && r.bottom > S.bottom + 10 && !el.closest('#overlay')) out.push({tipo: 'texto', grave: false, texto: `«${txt}» invade la franja de los subtítulos`});
+      for (const q of seen) {
+        const ix = Math.min(r.right, q.r.right) - Math.max(r.left, q.r.left), iy = Math.min(r.bottom, q.r.bottom) - Math.max(r.top, q.r.top);
+        if (ix > 0 && iy > 0 && ix * iy > 0.25 * Math.min(r.width * r.height, q.r.width * q.r.height) && q.el !== el && !q.el.contains(el) && !el.contains(q.el)) out.push({tipo: 'texto', grave: false, texto: `«${txt}» se solapa con «${q.txt}»`});
+      }
+      seen.push({r, el, txt});
+    }
+    return out;
+  };
+
   // Un único reloj que llama a los dibujos por fotograma.
   const clock = {t: 0};
   K.now = () => clock.t;
-  const runHooks = (t) => frameHooks.forEach((fn) => { try { fn(t); } catch (e) { /* una escena no tumba el vídeo */ } });
+  const runHooks = (t) => { frameHooks.forEach((fn) => { try { fn(t); } catch (e) { /* una escena no tumba el vídeo */ } }); try { K._fitTexts(); } catch (e) { /* nunca tumba el vídeo */ } };
   // En el render, HyperFrames avisa con «hf-seek» cuando ya ha colocado la línea de tiempo: se dibuja ahí, una vez.
   // Sin ese aviso (vista previa), dibuja el propio reloj.
   let seeks = false;

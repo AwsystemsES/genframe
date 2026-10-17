@@ -123,6 +123,78 @@
     x.fillStyle = g; x.fillRect(0, 0, 128, 128);
     return (puffTex = new T.CanvasTexture(c));
   };
+  /* ---------------------------------------------------------------- colisiones
+   * Cada pieza se aproxima por las cajas orientadas (OBB) de sus mallas (o por sus colisionadores explícitos,
+   * userData.colliders, para piezas cóncavas como los cascos abiertos). Sirve para separar lo que nace solapado,
+   * para que las personas esquiven obstáculos y para que el auditor detecte cosas que se atraviesan. */
+  const isOutline = (m) => m.material === OUTLINE || (m.material && m.material.isMeshBasicMaterial && m.material.side === T.BackSide);
+  const obbOfMesh = (m) => {
+    const g = m.geometry;
+    if (!g || !g.attributes || !g.attributes.position) return null;
+    if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox;
+    if (!bb || bb.isEmpty()) return null;
+    const e = m.matrixWorld.elements;
+    const ax = [new T.Vector3(e[0], e[1], e[2]), new T.Vector3(e[4], e[5], e[6]), new T.Vector3(e[8], e[9], e[10])];
+    const sc = ax.map((a) => a.length() || 1);
+    ax.forEach((a, i) => a.divideScalar(sc[i]));
+    const half = [((bb.max.x - bb.min.x) / 2) * sc[0], ((bb.max.y - bb.min.y) / 2) * sc[1], ((bb.max.z - bb.min.z) / 2) * sc[2]];
+    const c = bb.getCenter(new T.Vector3()).applyMatrix4(m.matrixWorld);
+    const ext = [0, 1, 2].map((i) => Math.abs(ax[0].getComponent(i)) * half[0] + Math.abs(ax[1].getComponent(i)) * half[1] + Math.abs(ax[2].getComponent(i)) * half[2]);
+    const box = new T.Box3(new T.Vector3(c.x - ext[0], c.y - ext[1], c.z - ext[2]), new T.Vector3(c.x + ext[0], c.y + ext[1], c.z + ext[2]));
+    return {c, ax, half, box, mesh: m};
+  };
+  /** Cajas orientadas de una pieza en su posición actual. Se ignoran contornos, sprites, máscaras, mallas diminutas y lo marcado con userData.noCollide. */
+  const obbsOf = (obj, minHalf = 0.35) => {
+    obj.updateMatrixWorld(true);
+    const out = [];
+    const push = (m) => { const o = obbOfMesh(m); if (o && Math.max(...o.half) >= minHalf) out.push(o); };
+    const walk = (n) => {
+      if (n.userData.noCollide || n.userData.collider || n.isSprite || n.isLight) return;
+      if (n.visible === false) return;
+      if (n.userData.colliders) { n.userData.colliders.forEach(push); return; }
+      if (n.isMesh && !isOutline(n) && n.material && n.material.colorWrite !== false && !n.material.transparent) push(n);
+      n.children.forEach(walk);
+    };
+    walk(obj);
+    const box = new T.Box3();
+    out.forEach((o) => box.union(o.box));
+    return {obbs: out, box};
+  };
+  /** Penetración entre dos cajas orientadas (teorema de los ejes separadores); 0 si no se tocan. */
+  const obbPen = (a, b) => {
+    const axes = [...a.ax, ...b.ax];
+    for (const x of a.ax) for (const y of b.ax) { const c = new T.Vector3().crossVectors(x, y); if (c.lengthSq() > 1e-6) axes.push(c.normalize()); }
+    const d = new T.Vector3().subVectors(b.c, a.c);
+    let min = Infinity;
+    for (const L of axes) {
+      const ra = a.half[0] * Math.abs(a.ax[0].dot(L)) + a.half[1] * Math.abs(a.ax[1].dot(L)) + a.half[2] * Math.abs(a.ax[2].dot(L));
+      const rb = b.half[0] * Math.abs(b.ax[0].dot(L)) + b.half[1] * Math.abs(b.ax[1].dot(L)) + b.half[2] * Math.abs(b.ax[2].dot(L));
+      const o = ra + rb - Math.abs(d.dot(L));
+      if (o <= 0) return 0;
+      if (o < min) min = o;
+    }
+    return min;
+  };
+  /** Peor penetración entre dos piezas (ya convertidas con obbsOf). tol: lo que se tolera (contactos, apoyos). */
+  const collide = (A, B, tol = 0.8) => {
+    if (!A.obbs.length || !B.obbs.length || !A.box.intersectsBox(B.box)) return null;
+    let worst = null;
+    for (const a of A.obbs) {
+      if (!a.box.intersectsBox(B.box)) continue;
+      for (const b of B.obbs) {
+        if (!a.box.intersectsBox(b.box)) continue;
+        const pen = obbPen(a, b);
+        const lim = Math.max(tol, 0.2 * Math.min(...a.half, ...b.half));
+        if (pen > lim && (!worst || pen > worst.pen)) worst = {pen, a: a.mesh, b: b.mesh};
+      }
+    }
+    return worst;
+  };
+  K.collide = {obbsOf, obbPen, collide};
+  /** Mundos 3D creados en este vídeo (para el auditor). */
+  K._worlds = [];
+
   K.world3d = function (root, T0, T1, {ground = 'iberia', sky = null, land = null, sea = null, highlight = {}, tilt = true, look = K.data.look || 'comic', regions = false, glow = null, haze = null, ocean = null, terrain = null, clouds = null, exposure = 1.15, rim = 1} = {}) {
     LOOK = look;
     const S = skyOf(sky);
@@ -211,37 +283,77 @@
       scene.add(land);
     }
     let seaHeight = () => 0;
+    // Objetos que flotan: el mar les pinta espuma en la línea de flotación y, si navegan, estela.
+    const floaters = [];
+    let seaGeo = null;
     if (ocean) {
       const o = ocean === true ? {} : ocean;
       const A = o.waves ?? 6, lambda = o.length ?? 120, dir = ((o.direction ?? 0) * Math.PI) / 180, chop = o.choppy ?? 1.6, r = K.rand(o.seed || 21);
-      const waves = Array.from({length: 5}, (_, i) => { const l = lambda * (0.45 + r() * 0.9), a = dir + (r() - 0.5) * 1.1, k = (2 * Math.PI) / l; return {kx: Math.sin(a) * k, kz: Math.cos(a) * k, w: Math.sqrt(98 * k) * (o.speed ?? 1), amp: (A / 2.4) * (l / lambda) * (0.6 + r() * 0.4), ph: r() * Math.PI * 2}; });
+      // Gerstner: los puntos del agua se desplazan hacia la cresta (crestas afiladas, valles abiertos).
+      const Q = o.gerstner ?? 0.6;
+      const waves = Array.from({length: 5}, () => { const l = lambda * (0.45 + r() * 0.9), a = dir + (r() - 0.5) * 1.1, k = (2 * Math.PI) / l; return {kx: Math.sin(a) * k, kz: Math.cos(a) * k, k, w: Math.sqrt(98 * k) * (o.speed ?? 1), amp: (A / 2.4) * (l / lambda) * (0.6 + r() * 0.4), ph: r() * Math.PI * 2}; });
+      // Desplazamiento de cada onda limitado para que la superficie nunca se pliegue sobre sí misma (Σ k·d < 1).
+      waves.forEach((v) => { v.d = Math.min(Q * v.amp, (Q * 0.85) / (v.k * waves.length)); });
       seaHeight = (x, z, t) => { let h = 0; for (const v of waves) { const s = (Math.sin(v.kx * x + v.kz * z - v.w * t + v.ph) + 1) / 2; h += v.amp * (2 * Math.pow(s, chop) - 1); } return h; };
-      const size = o.size || 5000, seg = o.segments || 190, cell = o.cell || 12;
+      const size = o.size || 5000, seg = o.segments || 220, cell = o.cell || 12;
       const geo = new T.PlaneGeometry(2, 2, seg, seg); geo.rotateX(-Math.PI / 2);
-      // Celdas pequeñas junto a la cámara y grandes hacia el horizonte (sin facetas enormes en primer plano).
-      const warp = (u) => Math.sign(u) * Math.pow(Math.abs(u), 2.4) * size / 2;
+      // Celdas pequeñas junto a la cámara y grandes hacia el horizonte (sin triángulos larguísimos que dejen vetas).
+      const warp = (u) => Math.sign(u) * Math.pow(Math.abs(u), 2.0) * size / 2;
       { const a = geo.attributes.position.array; for (let i = 0; i < a.length; i += 3) { a[i] = warp(a[i]); a[i + 2] = warp(a[i + 2]); } }
       const base = Float32Array.from(geo.attributes.position.array);
       const cols = new Float32Array(geo.attributes.position.count * 3);
       geo.setAttribute('color', new T.BufferAttribute(cols, 3));
       const deep = new T.Color(o.color || S.sea || '#2c5d8a'), crest = new T.Color(o.crest || '#7fa7bf'), foam = new T.Color(o.foam || '#eef4f6');
-      const water = new T.Mesh(geo, new T.MeshStandardMaterial({vertexColors: true, flatShading: true, roughness: 0.62, metalness: 0.02}));
-      water.receiveShadow = true; scene.add(water);
-      seaMesh.position.y = -A * 3; seaMesh.material.color = deep.clone().multiplyScalar(0.6);
-      const tc = new T.Color();
+      const skyRef = new T.Color(S.mid || '#9cb4c8').lerp(deep, 0.25);
+      const water = new T.Mesh(geo, new T.MeshStandardMaterial({vertexColors: true, flatShading: false, roughness: o.roughness ?? 0.72, metalness: 0.0}));
+      water.receiveShadow = true; water.renderOrder = 2; scene.add(water);
+      seaGeo = geo;
+      seaMesh.position.y = -A * 3; seaMesh.material.color = deep.clone().multiplyScalar(0.6); seaMesh.renderOrder = 2;
+      const tc = new T.Color(), nrm = new T.Vector3(), view = new T.Vector3();
+      const foamLevel = o.foamLevel ?? 0.62, slopeFoam = o.foamSlope ?? 0.42;
       updatersEarly.push((t) => {
         const ox = Math.round(cam.x / cell) * cell, oz = Math.round(cam.z / cell) * cell;
         water.position.set(ox, 0, oz);
         const arr = geo.attributes.position.array;
         for (let i = 0; i < arr.length; i += 3) {
-          const h = seaHeight(base[i] + ox, base[i + 2] + oz, t);
-          arr[i + 1] = h;
-          const u = Math.min(1, Math.max(0, (h / A + 0.5)));
-          tc.copy(deep).lerp(crest, u * 0.85);
-          if (h > A * (o.foamLevel ?? 0.62)) tc.lerp(foam, Math.min(1, (h / A - (o.foamLevel ?? 0.62)) * 4));
+          const x = base[i] + ox, z = base[i + 2] + oz;
+          let dx = 0, dz = 0;
+          for (const v of waves) { const c = Math.cos(v.kx * x + v.kz * z - v.w * t + v.ph) * v.d; dx += c * (v.kx / v.k); dz += c * (v.kz / v.k); }
+          arr[i] = base[i] + dx; arr[i + 1] = seaHeight(x, z, t); arr[i + 2] = base[i + 2] + dz;
+        }
+        geo.attributes.position.needsUpdate = true;
+        geo.computeVertexNormals();
+        // Espuma de los objetos que flotan: anillo en la línea de flotación y estela si navegan.
+        const fl = floaters.map((f) => {
+          const ob = f.obj, yaw = ob.rotation.y, v = f.speed(t);
+          return {x: ob.position.x, z: ob.position.z, c: Math.cos(yaw), s: Math.sin(yaw), hl: f.hl, hb: f.hb, ring: Math.max(2, f.hb * 0.3), trail: v > 0.5 ? Math.min(f.hl * 4, f.hl * 0.6 + v * 2.2) : 0, R2: Math.pow(Math.max(f.hl, f.hb) * 1.6 + (v > 0.5 ? Math.min(f.hl * 4, f.hl * 0.6 + v * 2.2) : 0), 2)};
+        });
+        const nr = geo.attributes.normal.array;
+        for (let i = 0; i < arr.length; i += 3) {
+          const px = arr[i] + ox, py = arr[i + 1], pz = arr[i + 2] + oz;
+          const u = Math.min(1, Math.max(0, py / A + 0.5));
+          tc.copy(deep).lerp(crest, u * 0.8);
+          // Reflejo del cielo según el ángulo (Fresnel): el agua lejana y rasante refleja más.
+          nrm.set(nr[i], nr[i + 1], nr[i + 2]);
+          view.set(camera.position.x - px, camera.position.y - py, camera.position.z - pz).normalize();
+          const fres = Math.pow(1 - Math.max(0, nrm.dot(view)), 4);
+          tc.lerp(skyRef, fres * (o.reflejo ?? 0.32));
+          // Espuma en las crestas: por altura y por pendiente (donde la ola rompe).
+          let f = 0;
+          if (py > A * foamLevel) f = Math.min(1, (py / A - foamLevel) * 4);
+          if (nrm.y < 1 - slopeFoam * 0.35 && py > A * 0.4) f = Math.max(f, Math.min(0.35, (1 - nrm.y - slopeFoam * 0.35) * 2.2));
+          for (const q of fl) {
+            const ddx = px - q.x, ddz = pz - q.z;
+            if (ddx * ddx + ddz * ddz > q.R2) continue;
+            const lx = ddx * q.c - ddz * q.s, lz = ddx * q.s + ddz * q.c;
+            const d = Math.max(Math.abs(lx) - q.hb, Math.abs(lz) - q.hl);
+            if (d > -1 && d < q.ring) f = Math.max(f, 0.85 * (1 - Math.max(0, d) / q.ring));
+            if (q.trail) { const along = -lz - q.hl; if (along > 0 && along < q.trail && Math.abs(lx) < q.hb * (0.5 + (along / q.trail) * 0.9)) f = Math.max(f, 0.75 * (1 - along / q.trail)); }
+          }
+          if (f > 0) tc.lerp(foam, f);
           cols[i] = tc.r; cols[i + 1] = tc.g; cols[i + 2] = tc.b;
         }
-        geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+        geo.attributes.color.needsUpdate = true;
       });
     }
     if (clouds) {
@@ -345,24 +457,57 @@
       }
     };
 
-    /** Añade un modelo fabricado por el taller (K.models) en un punto [lon, lat] o {x, z}. Devuelve el objeto 3D. */
-    W.add = (name, where, {scale = 1, rotate = 0, y = null, t = null, ...params} = {}) => {
+    /**
+     * Añade un modelo fabricado por el taller (K.models) en un punto [lon, lat] o {x, z}. Devuelve el objeto 3D.
+     * Opciones del motor (el resto va a la pieza): scale, rotate, y (altura fija: la pieza vuela o cuelga), t (aparece en t),
+     * separar (true: si nace atravesando otra pieza, se aparta lo justo y avisa), fantasma (no choca con nada), suelo (false: no sigue el terreno).
+     */
+    W.add = (name, where, {scale = 1, rotate = 0, y = null, t = null, separar = true, fantasma = false, suelo = true, ...params} = {}) => {
       const model = K.models[name];
       if (!model) throw new Error('Modelo 3D no fabricado: ' + name + ' (hay: ' + Object.keys(K.models).join(', ') + ')');
       const obj = model.build(K.forge, params);
+      obj.name = obj.name || name;
+      // Huella local (sin girar ni mover), para flotar, esquivar y formar.
+      obj.updateMatrixWorld(true);
+      const lb = new T.Box3().setFromObject(obj);
+      obj.userData.local = {min: lb.min.clone().multiplyScalar(scale), max: lb.max.clone().multiplyScalar(scale)};
       const [x, z] = toXZ(where);
       obj.position.set(x, y ?? (ground === 'none' ? (terrainHeight ? terrainHeight(x, z) : 0) : HL), z);
       obj.rotation.y = (rotate * Math.PI) / 180;
       obj.scale.setScalar(scale);
       obj.userData.baseScale = scale;
+      obj.userData.model = name;
+      obj.userData.ghost = !!fantasma;
+      obj.userData.grounded = y === null && suelo !== false;
       const joints = {};
       obj.traverse((n) => { if (n.name && n !== obj) joints[n.name] = n; });
       obj.userData.joints = joints;
       obj.userData.actions = obj.userData.actions || {};
       scene.add(obj);
+      if (separar && !fantasma) separate(obj);
       objects.push(obj);
       if (t !== null) W.show(obj, t);
       return obj;
+    };
+    /** Aparta una pieza recién puesta de las que ya había si se atraviesan (lo justo, en horizontal; si vuela, también en vertical). */
+    const separate = (obj) => {
+      const others = objects.filter((o) => o.parent === scene && !o.userData.ghost);
+      if (!others.length) return;
+      const lim = obj.userData.local, span = Math.max(lim.max.x - lim.min.x, lim.max.z - lim.min.z, 1);
+      let moved = 0, hit = null;
+      for (let it = 0; it < 14; it++) {
+        const A = obbsOf(obj);
+        hit = null;
+        for (const o of others) { const c = collide(A, obbsOf(o)); if (c) { hit = {o, ...c}; break; } }
+        if (!hit) break;
+        const ob = new T.Box3().setFromObject(hit.o), oc = ob.getCenter(new T.Vector3());
+        const d = new T.Vector3(obj.position.x - oc.x, obj.userData.grounded ? 0 : obj.position.y - oc.y, obj.position.z - oc.z);
+        if (d.lengthSq() < 1e-6) d.set(1, 0, 0.3);
+        d.normalize().multiplyScalar(Math.max(hit.pen, span * 0.06) * 1.05);
+        obj.position.add(d); moved += d.length();
+        if (obj.userData.grounded) obj.position.y = ground === 'none' ? (terrainHeight ? terrainHeight(obj.position.x, obj.position.z) : 0) : HL;
+      }
+      if (moved > 0) console.warn(`genframe: «${obj.userData.model}» nacía atravesando otra pieza; se ha apartado ${moved.toFixed(1)} unidades${hit ? ' (sigue tocando «' + hit.o.userData.model + '»: revisa la colocación)' : ''}.`);
     };
     /** Lleva articulaciones con nombre a unos ángulos (grados, {x, y, z}) entre t y t+dur. */
     W.pose = (obj, t, angles, dur = 0.5, ease = 'inOutSine') => {
@@ -381,6 +526,7 @@
     W.act = (obj, name, t0, t1, {rate = 1, fade = 0.25} = {}) => {
       const fn = (obj.userData.actions || {})[name];
       if (!fn) return;
+      (obj.userData._acts = obj.userData._acts || []).push({name, t0, t1, rate});
       updaters.push((tt) => {
         if (tt < t0 || tt > t1) return;
         fn((tt - t0) * rate, Math.min(1, (tt - t0) / fade, (t1 - tt) / fade));
@@ -389,15 +535,18 @@
     /** Aparece creciendo con rebote en t. */
     W.show = (obj, t, dur = 0.6) => { const s = obj.userData.baseScale || 1; obj.scale.setScalar(0.0001); K.tl.add(obj.scale, {x: [0.0001, s], y: [0.0001, s], z: [0.0001, s], duration: K.ms(dur), ease: 'outBack'}, K.ms(t)); };
     W.hide = (obj, t, dur = 0.4) => { const s = obj.userData.baseScale || 1; K.tl.add(obj.scale, {x: [s, 0.0001], y: [s, 0.0001], z: [s, 0.0001], duration: K.ms(dur), ease: 'inBack'}, K.ms(t)); };
-    /** Mueve un objeto a otro punto entre t y t+dur (mirando hacia donde va). */
+    /** Mueve un objeto a otro punto entre t y t+dur (mirando hacia donde va). Si es una persona, mejor w.walk (pies sin patinar). */
     W.move = (obj, t, to, dur = 2, ease = 'inOutSine') => {
       const [x, z] = toXZ(to);
       const from = obj.userData.lastXZ || [obj.position.x, obj.position.z];
       obj.userData.lastXZ = [x, z];
-      const ry = Math.atan2(-(z - from[1]), x - from[0]);
-      K.tl.add(obj.rotation, {y: [obj.rotation.y, ry], duration: 200}, K.ms(t));
+      (obj.userData.track = obj.userData.track || []).push({t0: t, t1: t + dur, x0: from[0], z0: from[1], x1: x, z1: z});
+      const ry = Math.atan2(x - from[0], z - from[1]);
+      K.tl.add(obj.rotation, {y: [obj.rotation.y, ry], duration: 300, ease: 'inOutSine'}, K.ms(t));
       K.tl.add(obj.position, {x: [from[0], x], z: [from[1], z], duration: K.ms(dur), ease}, K.ms(t));
     };
+    /** Velocidad horizontal (unidades/s) de un objeto en t según sus trayectorias registradas (w.move, w.walk). */
+    const speedOf = (obj, t) => { for (const s of obj.userData.track || []) if (t >= s.t0 && t <= s.t1) return Math.hypot(s.x1 - s.x0, s.z1 - s.z0) / Math.max(0.01, s.t1 - s.t0); return 0; };
     /** Colorea un país (código ISO2) en t. */
     W.country = (code, t, color, dur = 0.6) => {
       const m = countries[code];
@@ -412,7 +561,7 @@
     /** Rótulo sobre un punto: estilo 'city' (nombre), 'pin' (marcador de destino con baliza) o 'title' (grande). */
     W.label = (text, where, t, t2 = null, {style = 'city', color = '#ffd84a', height = 6} = {}) => {
       const [x, z] = toXZ(where);
-      const el = K.el(labels, 'div', {html: text, style: {position: 'absolute', left: '0', top: '0', whiteSpace: 'nowrap', transform: 'translate(-50%, -100%)', fontFamily: style === 'title' ? 'var(--title)' : 'var(--label)', fontSize: style === 'title' ? '64px' : '34px', color: '#fff', textShadow: '0 0 2px #000, 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000', letterSpacing: '.04em', textTransform: 'uppercase', opacity: 0}});
+      const el = K.el(labels, 'div', {html: text, style: {position: 'absolute', left: '0', top: '0', whiteSpace: 'nowrap', transform: 'translate(-50%, -100%)', fontFamily: style === 'title' ? 'var(--title)' : 'var(--label)', fontSize: style === 'title' ? (K.vertical ? '72px' : '64px') : (K.vertical ? '44px' : '36px'), color: '#fff', textShadow: '0 0 2px #000, 2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000', letterSpacing: '.04em', textTransform: 'uppercase', opacity: 0}});
       if (style === 'pin') {
         const beam = new T.Mesh(new T.CylinderGeometry(1.2, 1.2, 120, 12, 1, true), new T.MeshBasicMaterial({color: new T.Color(color), transparent: true, opacity: 0.35, depthWrite: false}));
         beam.position.set(x, HL + 60, z); beam.scale.setScalar(0.0001); scene.add(beam);
@@ -441,33 +590,306 @@
       K.onFrame((tt) => geo.setDrawRange(0, Math.floor(total * K.ramp(tt, t, t + dur) / 6) * 6));
       return m;
     };
-    /** Efectos de partículas deterministas: 'fire', 'smoke', 'explosion', 'rain', 'sparkle'. */
-    W.fx = (kind, where, t0, t1, {size = 1, n = 40, seed = 5} = {}) => {
-      const [x, z] = toXZ(where);
+    /**
+     * Efectos de partículas deterministas, con profundidad (lo que queda detrás de una pieza no se ve):
+     * 'fire', 'smoke' (humo iluminado: oscuro al nacer, claro al subir), 'explosion', 'rain', 'sparkle',
+     * 'fogonazo' (boca de cañón: destello alargado y luz que ilumina lo de alrededor; se repite con `cada` segundos),
+     * 'columna' (impacto en el suelo o el agua: columna que sube y cae con gravedad, restos en parábola y marca oscura; material 'arena'|'agua'|'tierra').
+     * where: [lon, lat], {x, z, y} o una pieza (se ancla a ella; `offset` {x, y, z} en sus coordenadas). Sin y, nace en el suelo o en el mar.
+     * opts: size, n, seed, dir (vector de salida del fogonazo), cada, shake (sacude la cámara en cada disparo o impacto).
+     */
+    W.fx = (kind, where, t0, t1, {size = 1, n = null, seed = 5, dir = null, cada = 0, shake = 0, material = 'arena', offset = null, wind = 0} = {}) => {
       const r = K.rand(seed);
-      const col = {fire: ['#ffb02e', '#ff5a1f', '#ffe066'], smoke: ['#5e5a62', '#7d7884', '#3f3c44'], explosion: ['#fff2b0', '#ff8a1f', '#d6331f'], rain: ['#bcd6ff'], sparkle: ['#fff6b0', '#ffd84a']}[kind] || ['#fff'];
+      const anchor = where && where.isObject3D ? where : null;
+      const fixed = anchor ? null : (() => { const [x, z] = toXZ(where); return {x, z, y: where && where.y !== undefined ? where.y : null}; })();
+      const off = new T.Vector3(offset ? offset.x || 0 : 0, offset ? offset.y || 0 : 0, offset ? offset.z || 0 : 0);
+      const tmpP = new T.Vector3();
+      const baseAt = (tt) => {
+        if (anchor) { tmpP.copy(off); anchor.localToWorld(tmpP); return tmpP; }
+        const y = fixed.y !== null ? fixed.y : ground !== 'none' ? HL : ocean && !terrainHeight ? seaHeight(fixed.x, fixed.z, tt) : terrainHeight ? Math.max(terrainHeight(fixed.x, fixed.z), ocean ? seaHeight(fixed.x, fixed.z, tt) : -Infinity) : 0;
+        return tmpP.set(fixed.x, y, fixed.z);
+      };
+      const sprite = (color, blending = T.AdditiveBlending) => { const m = new T.Sprite(new T.SpriteMaterial({map: puff(), color: new T.Color(color), transparent: true, opacity: 0, depthWrite: false, depthTest: true, blending})); scene.add(m); return m; };
+      const shakeAt = (tt) => { if (shake) shakes.push({t: tt, a: shake}); };
+      if (kind === 'fogonazo') {
+        const period = cada || 0, count = n || 9;
+        const d = new T.Vector3(...(dir ? [dir.x || 0, dir.y || 0, dir.z || 1] : [0, 0, 1])).normalize();
+        const parts = Array.from({length: count}, (_, i) => ({m: sprite(i < 3 ? '#fff6d8' : i % 2 ? '#ffb347' : '#ff7a2a'), u: i / count, j: (r() - 0.5) * 0.5}));
+        const light = new T.PointLight(new T.Color('#ffb860'), 0, 60 * size, 1.4); scene.add(light);
+        const shots = []; for (let ts = t0; ts <= t1 && shots.length < 400; ts += period || 1e9) { shots.push(ts); shakeAt(ts); if (!period) break; }
+        updaters.push((tt) => {
+          let last = null; for (const s0 of shots) if (tt >= s0) last = s0;
+          const age = last === null ? 9 : tt - last, on = age < 0.16;
+          const p = baseAt(tt), wd = anchor ? d.clone().transformDirection(anchor.matrixWorld) : d;
+          light.position.copy(p); light.intensity = on ? 9 * size * (1 - age / 0.16) : 0;
+          for (const q of parts) {
+            if (!on) { q.m.material.opacity = 0; continue; }
+            const k = 1 - age / 0.16;
+            q.m.position.copy(p).addScaledVector(wd, (q.u * 9 + 1) * size * (0.6 + (1 - k) * 0.8)).add(new T.Vector3(q.j, q.j * 0.6, -q.j).multiplyScalar(size * 2));
+            q.m.scale.setScalar(size * (5.5 - q.u * 3.5) * (0.7 + k * 0.5));
+            q.m.material.opacity = k * (q.u < 0.3 ? 1 : 0.85);
+          }
+        });
+        return;
+      }
+      if (kind === 'columna') {
+        const pal = {arena: ['#d9c39c', '#bfa57c', '#8f7b5a'], agua: ['#e8f1f6', '#bcd3e0', '#8fb0c4'], tierra: ['#7a6650', '#5f4d3b', '#463a2e']}[material] || ['#d9c39c', '#bfa57c', '#8f7b5a'];
+        const count = n || 46, life = 2.1;
+        const parts = Array.from({length: count}, (_, i) => ({m: sprite(pal[i % 3], T.NormalBlending), vx: (r() - 0.5) * 6, vz: (r() - 0.5) * 6, vy: 22 + r() * 26, s: 3.4 + r() * 4, d: r() * 0.12}));
+        const debris = Array.from({length: Math.round(count / 3)}, () => { const m = new T.Mesh(new T.BoxGeometry(0.7, 0.5, 0.6), toon(pal[2])); m.visible = false; scene.add(m); return {m, vx: (r() - 0.5) * 30, vz: (r() - 0.5) * 30, vy: 18 + r() * 26, sp: r() * 10}; });
+        const scorch = new T.Mesh(new T.CircleGeometry(1, 20), new T.MeshBasicMaterial({color: new T.Color(material === 'agua' ? '#f2f6f8' : '#2a241e'), transparent: true, opacity: 0, depthWrite: false}));
+        scorch.rotation.x = -Math.PI / 2; scene.add(scorch);
+        const flash = new T.PointLight(new T.Color('#ffc070'), 0, 90 * size, 1.5); scene.add(flash);
+        const shots = []; for (let ts = t0; ts <= t1 && shots.length < 200; ts += cada || 1e9) { shots.push(ts); shakeAt(ts); if (!cada) break; }
+        const g = 30 * size;
+        updaters.push((tt) => {
+          let last = null; for (const s0 of shots) if (tt >= s0) last = s0;
+          const age = last === null ? -1 : tt - last;
+          const p = baseAt(last === null ? tt : last).clone();
+          flash.position.set(p.x, p.y + 4 * size, p.z); flash.intensity = age >= 0 && age < 0.18 && material !== 'agua' ? 7 * size * (1 - age / 0.18) : 0;
+          for (const q of parts) {
+            const a = age - q.d;
+            if (a < 0 || a > life) { q.m.material.opacity = 0; continue; }
+            q.m.position.set(p.x + q.vx * a * size, p.y + Math.max(0, (q.vy * a - 0.5 * g * a * a / size) * size), p.z + q.vz * a * size + wind * a * a * size);
+            q.m.scale.setScalar(size * q.s * (1 + a * 1.6));
+            q.m.material.opacity = Math.min(1, a * 10) * Math.pow(Math.max(0, 1 - a / life), 0.7);
+          }
+          for (const q of debris) {
+            if (age < 0 || age > 1.6) { q.m.visible = false; continue; }
+            const y = q.vy * age - 0.5 * g * age * age / size;
+            q.m.visible = y > -1;
+            q.m.position.set(p.x + q.vx * age * size, p.y + y * size, p.z + q.vz * age * size);
+            q.m.rotation.set(age * q.sp, age * q.sp * 0.7, 0); q.m.scale.setScalar(size);
+          }
+          scorch.position.set(p.x, p.y + 0.15, p.z); scorch.scale.setScalar(size * 6 * Math.min(1, Math.max(0, age) * 6));
+          scorch.material.opacity = age >= 0 ? Math.min(0.55, age * 4) * (material === 'agua' ? Math.max(0, 1 - age / 1.2) : 1) : 0;
+        });
+        return;
+      }
+      const col = {fire: ['#ffb02e', '#ff5a1f', '#ffe066'], smoke: ['#3f3c44', '#5e5a62', '#7d7884'], explosion: ['#fff2b0', '#ff8a1f', '#d6331f'], rain: ['#bcd6ff'], sparkle: ['#fff6b0', '#ffd84a']}[kind] || ['#fff'];
+      const count = n || 40;
       const parts = [];
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < count; i++) {
         let m;
-        if (kind === 'rain') m = new T.Mesh(new T.BoxGeometry(0.15, 3, 0.15), new T.MeshBasicMaterial({color: new T.Color(col[i % col.length]), transparent: true, opacity: 0}));
-        else { m = new T.Sprite(new T.SpriteMaterial({map: puff(), color: new T.Color(col[i % col.length]), transparent: true, opacity: 0, depthWrite: false, blending: kind === 'smoke' ? T.NormalBlending : T.AdditiveBlending})); m.userData.sprite = true; }
-        scene.add(m);
+        if (kind === 'rain') { m = new T.Mesh(new T.BoxGeometry(0.15, 3, 0.15), new T.MeshBasicMaterial({color: new T.Color(col[i % col.length]), transparent: true, opacity: 0})); scene.add(m); }
+        else { m = sprite(col[i % col.length], kind === 'smoke' ? T.NormalBlending : T.AdditiveBlending); m.userData.sprite = true; }
         parts.push({m, ph: r(), dx: (r() - 0.5) * 8 * size, dz: (r() - 0.5) * 8 * size, sp: 0.6 + r() * 0.8});
       }
-      K.onFrame((tt) => {
+      if (kind === 'explosion') shakeAt(t0);
+      const dark = new T.Color('#2d2a30'), light = new T.Color(kind === 'smoke' ? '#b9b4ba' : '#ffffff');
+      updaters.push((tt) => {
         const on = tt >= t0 && tt <= t1;
-        for (const p of parts) {
-          if (!on) { p.m.material.opacity = 0; continue; }
-          const life = ((tt - t0) * p.sp + p.ph) % 1;
-          if (kind === 'rain') { p.m.position.set(x + p.dx * 12, HL + 80 - life * 80, z + p.dz * 12); p.m.material.opacity = 0.6; continue; }
+        const p = baseAt(tt);
+        for (const q of parts) {
+          if (!on) { q.m.material.opacity = 0; continue; }
+          const life = ((tt - t0) * q.sp + q.ph) % 1;
+          if (kind === 'rain') { q.m.position.set(p.x + q.dx * 12, p.y + 80 - life * 80, p.z + q.dz * 12); q.m.material.opacity = 0.6; continue; }
           const rise = kind === 'smoke' ? 30 : kind === 'explosion' ? 14 : 10;
           const spread = kind === 'explosion' ? 1 + life * 2.5 : 1 + life;
-          p.m.position.set(x + p.dx * spread * 0.4, HL + life * rise * size, z + p.dz * spread * 0.4);
-          p.m.scale.setScalar((kind === 'smoke' ? 1 + life * 2.5 : 1.2 - life) * size * (p.m.userData.sprite ? 3.2 : 1));
-          p.m.material.opacity = Math.sin(life * Math.PI) * (kind === 'smoke' ? 0.55 : 0.95);
+          q.m.position.set(p.x + q.dx * spread * 0.4 + wind * life * 20 * size, p.y + life * rise * size, p.z + q.dz * spread * 0.4);
+          q.m.scale.setScalar((kind === 'smoke' ? 1 + life * 2.5 : 1.2 - life) * size * (q.m.userData.sprite ? 3.2 : 1));
+          if (kind === 'smoke') q.m.material.color.copy(dark).lerp(light, Math.min(1, life * 1.4));
+          q.m.material.opacity = Math.sin(life * Math.PI) * (kind === 'smoke' ? 0.6 : 0.95);
         }
       });
     };
+    /* ---------------- movimiento con criterio: rutas a pie, formaciones y repartos sin choques ---------------- */
+    /** Huella de una pieza en planta: centro, semiejes y giro (para esquivar y separar). */
+    const footprint = (o) => {
+      const l = o.userData.local; if (!l) return null;
+      const sc = o.scale.x, cx = (l.min.x + l.max.x) / 2, cz = (l.min.z + l.max.z) / 2, yaw = o.rotation.y, c = Math.cos(yaw), sn = Math.sin(yaw);
+      return {x: o.position.x + cx * c + cz * sn, z: o.position.z - cx * sn + cz * c, hb: ((l.max.x - l.min.x) / 2) * (sc / (o.userData.baseScale || 1)), hl: ((l.max.z - l.min.z) / 2) * (sc / (o.userData.baseScale || 1)), c, s: sn, ymin: o.position.y + l.min.y, ymax: o.position.y + l.max.y};
+    };
+    const gaitOf = (obj, paso) => {
+      const l = obj.userData.local || {min: {y: 0}, max: {y: 18}}, H = l.max.y - l.min.y;
+      const g = (obj.userData.gaits || {})[paso];
+      return g || (paso === 'correr' ? {omega: 10, stride: H * 1.4} : {omega: 6.2, stride: H * 0.8});
+    };
+    /**
+     * Lleva una pieza (normalmente una persona) por una ruta a pie desde t0: la zancada sale de la distancia recorrida
+     * (los pies no patinan), sigue la altura del terreno, mira hacia donde va y rodea los obstáculos que encuentra.
+     * ruta: [{x, z} | [lon, lat], …] (si es un solo punto, va desde donde está). opts: hasta (t de llegada) o velocidad (u/s),
+     * paso: 'andar'|'correr' (acción de la pieza), esquivar (true), acelerar (s). Devuelve {t1, largo}.
+     */
+    W.walk = (obj, ruta, t0, {hasta = null, velocidad = null, paso = 'andar', esquivar = true, acelerar = 0.35} = {}) => {
+      const raw = (Array.isArray(ruta) && ruta.length && (Array.isArray(ruta[0]) || typeof ruta[0] === 'object') ? ruta : [ruta]).map((q) => toXZ(q));
+      if (raw.length === 1) raw.unshift([obj.position.x, obj.position.z]);
+      const g = gaitOf(obj, paso), natural = (g.stride * g.omega) / (2 * Math.PI);
+      const me = obj.userData.local, rad = (me ? Math.max(me.max.x - me.min.x, me.max.z - me.min.z) * 0.5 : 4) + 2.5;
+      let path = null, cum = null, L = 0;
+      const build = () => {
+        // Ruta densa cada 2 unidades; se empuja fuera de los obstáculos (con margen) y se suaviza, varias pasadas.
+        let pts = [];
+        for (let i = 0; i < raw.length - 1; i++) { const [ax, az] = raw[i], [bx, bz] = raw[i + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2)); for (let k = 0; k < n; k++) pts.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n]); }
+        pts.push(raw[raw.length - 1].slice());
+        if (esquivar) {
+          const obs = objects.filter((o) => o !== obj && o.parent === scene && !o.userData.ghost && !o.userData.floating && !o.userData.walking).map(footprint).filter(Boolean).filter((f) => f.ymax > (obj.position.y + 1) && f.ymin < obj.position.y + 15);
+          if (obs.length) {
+            // Búsqueda de camino (A*) sobre una rejilla con los obstáculos inflados por el tamaño de quien camina; después se
+            // estira el camino (solo se quedan las esquinas necesarias). Si no cabe por un hueco, lo rodea.
+            const blocked = (x, z) => obs.some((f) => { const dx = x - f.x, dz = z - f.z, lx = dx * f.c - dz * f.s, lz = dx * f.s + dz * f.c; return Math.abs(lx) < f.hb + rad && Math.abs(lz) < f.hl + rad; });
+            const big = Math.max(...obs.map((f) => Math.max(f.hb, f.hl))) + rad;
+            const xs = raw.map((q) => q[0]), zs = raw.map((q) => q[1]);
+            const x0 = Math.min(...xs) - 60 - big * 3, z0 = Math.min(...zs) - 60 - big * 3, x1 = Math.max(...xs) + 60 + big * 3, z1 = Math.max(...zs) + 60 + big * 3;
+            const cell = Math.max(1.5, rad * 0.35), nx = Math.ceil((x1 - x0) / cell) + 1, nz = Math.ceil((z1 - z0) / cell) + 1;
+            const occ = new Uint8Array(nx * nz);
+            for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) occ[j * nx + i] = blocked(x0 + i * cell, z0 + j * cell) ? 1 : 0;
+            const ci = (x) => K.clamp(Math.round((x - x0) / cell), 0, nx - 1), cj = (z) => K.clamp(Math.round((z - z0) / cell), 0, nz - 1);
+            const astar = (a, b) => {
+              const si = ci(a[0]), sj = cj(a[1]), ti = ci(b[0]), tj = cj(b[1]), N = nx * nz;
+              const g = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), done = new Uint8Array(N);
+              const heap = [], h = (i, j) => { const dx = Math.abs(i - ti), dz = Math.abs(j - tj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+              const pushH = (k, f) => { heap.push([f, k]); let c = heap.length - 1; while (c > 0) { const p2 = (c - 1) >> 1; if (heap[p2][0] <= heap[c][0]) break; [heap[p2], heap[c]] = [heap[c], heap[p2]]; c = p2; } };
+              const popH = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = c * 2 + 1, r2 = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r2 < heap.length && heap[r2][0] < heap[m][0]) m = r2; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+              const s0 = sj * nx + si, t0k = tj * nx + ti;
+              g[s0] = 0; pushH(s0, h(si, sj));
+              while (heap.length) {
+                const [, k] = popH();
+                if (done[k]) continue; done[k] = 1;
+                if (k === t0k) break;
+                const i = k % nx, j = (k / nx) | 0;
+                for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+                  const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= nz) continue;
+                  const kk = jj * nx + ii; if (occ[kk] && kk !== t0k) continue;
+                  if (di && dj && (occ[j * nx + ii] || occ[jj * nx + i])) continue;
+                  const ng = g[k] + (di && dj ? 1.414 : 1);
+                  if (ng < g[kk]) { g[kk] = ng; from[kk] = k; pushH(kk, ng + h(ii, jj)); }
+                }
+              }
+              if (from[t0k] < 0 && t0k !== s0) return [a, b];
+              const cells = []; for (let k = t0k; k >= 0; k = from[k]) { cells.push([x0 + (k % nx) * cell, z0 + ((k / nx) | 0) * cell]); if (k === s0) break; }
+              cells.reverse(); cells[0] = a; cells[cells.length - 1] = b;
+              return cells;
+            };
+            const clear = (a, b) => { const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (cell * 0.5)); for (let k = 1; k < n; k++) { const u = k / n; if (blocked(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u)) return false; } return true; };
+            let route = [raw[0]];
+            for (let i = 0; i < raw.length - 1; i++) route = route.concat(astar(raw[i], raw[i + 1]).slice(1));
+            // Estirar: desde cada punto, saltar al más lejano que se vea sin obstáculos.
+            const pulled = [route[0]];
+            for (let i = 0; i < route.length - 1;) { let j = route.length - 1; while (j > i + 1 && !clear(route[i], route[j])) j--; pulled.push(route[j]); i = j; }
+            pts = [];
+            for (let i = 0; i < pulled.length - 1; i++) { const [ax, az] = pulled[i], [bx, bz] = pulled[i + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 2)); for (let k = 0; k < n; k++) pts.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n]); }
+            pts.push(pulled[pulled.length - 1].slice());
+            // Esquinas un poco redondeadas sin volver a meterse en nada.
+            for (let it = 0; it < 3; it++) pts = pts.map((q, i) => { if (i === 0 || i === pts.length - 1) return q; const m = [(pts[i - 1][0] + q[0] * 2 + pts[i + 1][0]) / 4, (pts[i - 1][1] + q[1] * 2 + pts[i + 1][1]) / 4]; return blocked(m[0], m[1]) ? q : m; });
+          }
+        }
+        path = pts; cum = [0];
+        for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+        L = cum[cum.length - 1];
+      };
+      // La ruta se calcula en el primer fotograma, cuando ya están todas las piezas de la escena.
+      const straight = raw.reduce((a, q, i) => (i ? a + Math.hypot(q[0] - raw[i - 1][0], q[1] - raw[i - 1][1]) : 0), 0);
+      const v0 = velocidad || (hasta ? straight / Math.max(0.2, hasta - t0 - acelerar) : natural);
+      const t1 = hasta || t0 + straight / v0 + acelerar;
+      obj.userData.walking = (obj.userData.walking || []).concat([{t0, t1}]);
+      (obj.userData.track = obj.userData.track || []).push({t0, t1, x0: raw[0][0], z0: raw[0][1], x1: raw[raw.length - 1][0], z1: raw[raw.length - 1][1]});
+      const at = (s) => { let i = 1; while (i < cum.length - 1 && cum[i] < s) i++; const u = (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]); return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * u, path[i - 1][1] + (path[i][1] - path[i - 1][1]) * u]; };
+      updaters.push((tt) => {
+        if (!path) build();
+        const v = L / Math.max(0.2, t1 - t0 - acelerar);
+        const u = K.clamp(tt - t0, 0, t1 - t0), ta = Math.min(acelerar, (t1 - t0) / 2), T = t1 - t0;
+        let sd, sp;
+        if (u < ta) { sd = (v * u * u) / (2 * ta); sp = (v * u) / ta; } else if (u > T - ta) { const w = T - u; sd = L - (v * w * w) / (2 * ta); sp = (v * w) / ta; } else { sd = v * (u - ta / 2); sp = v; }
+        sd = K.clamp(sd, 0, L);
+        const [x, z] = at(sd), [xa, za] = at(Math.max(0, sd - 2)), [xb, zb] = at(Math.min(L, sd + 2));
+        obj.position.x = x; obj.position.z = z;
+        if (terrainHeight) obj.position.y = terrainHeight(x, z);
+        if (tt >= t0 - 0.05 && Math.hypot(xb - xa, zb - za) > 0.5) obj.rotation.y = Math.atan2(xb - xa, zb - za);
+        const fn = (obj.userData.actions || {})[paso];
+        if (fn && tt >= t0 - 0.1 && tt <= t1 + 0.4) fn((sd / g.stride) * ((2 * Math.PI) / g.omega), Math.min(1, sp / Math.max(1e-3, v)));
+      });
+      return {t1, largo: straight};
+    };
+    /**
+     * Formación de n piezas iguales separadas según su tamaño real (nunca se atraviesan): 'V' (aviones, aves), 'fila'
+     * (hombro con hombro), 'columna' (una tras otra), 'rejilla'. center: {x, z} o [lon, lat]. opts: rotate (hacia dónde
+     * miran), y, separacion (×tamaño, por defecto 1.3), escalon (altura extra por puesto) y el resto, parámetros de la pieza.
+     */
+    W.formation = (name, n, center, {tipo = 'V', rotate = 0, y = null, separacion = 1.3, escalon = 0, ...params} = {}) => {
+      const first = W.add(name, center, {...params, rotate, y, separar: false});
+      const l = first.userData.local, wd = (l.max.x - l.min.x) * separacion, dp = (l.max.z - l.min.z) * separacion;
+      const [cx, cz] = toXZ(center), yaw = (rotate * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
+      const cols = Math.ceil(Math.sqrt(n));
+      const slot = (i) => {
+        if (tipo === 'fila') return [(i - (n - 1) / 2) * wd, 0];
+        if (tipo === 'columna') return [0, -i * dp];
+        if (tipo === 'rejilla') return [((i % cols) - (cols - 1) / 2) * wd, -Math.floor(i / cols) * dp];
+        const row = Math.ceil(i / 2), side = i % 2 ? -1 : 1; return [side * row * wd * 0.55, -row * dp * 0.75];
+      };
+      const list = [first];
+      const place = (o, i) => { const [lx, lz] = slot(i); o.position.x = cx + lx * c + lz * sn; o.position.z = cz - lx * sn + lz * c; if (y !== null) o.position.y = y + escalon * Math.ceil(i / 2); else if (o.userData.grounded) o.position.y = terrainHeight ? terrainHeight(o.position.x, o.position.z) : o.position.y; };
+      place(first, 0);
+      for (let i = 1; i < n; i++) { const o = W.add(name, center, {...params, rotate, y, separar: false}); place(o, i); list.push(o); }
+      return list;
+    };
+    /**
+     * Reparte n piezas por una zona sin que se toquen entre sí ni con lo que ya hay (muestreo de Poisson con semilla).
+     * zona: {x, z, w, d} (rectángulo centrado) o {x, z, r} (círculo). opts: seed, separacion (×tamaño, 1.15), giro ('azar' o grados),
+     * y el resto, parámetros de la pieza (si es una función (i) => ({…}), se llama para cada una: variantes).
+     */
+    W.scatter = (name, n, zona, {seed = 3, separacion = 1.15, giro = 'azar', params: per = null, ...params} = {}) => {
+      const r = K.rand(seed), list = [];
+      const probe = W.add(name, {x: zona.x, z: zona.z}, {...params, ...(per ? per(0) : {}), separar: false});
+      const l = probe.userData.local, rad = (Math.hypot(l.max.x - l.min.x, l.max.z - l.min.z) / 2) * separacion * 0.8;
+      scene.remove(probe); objects.splice(objects.indexOf(probe), 1);
+      const fixedFp = objects.filter((o) => o.parent === scene && !o.userData.ghost).map(footprint).filter(Boolean);
+      const pick = () => (zona.r ? (() => { const a = r() * Math.PI * 2, d = Math.sqrt(r()) * zona.r; return [zona.x + Math.cos(a) * d, zona.z + Math.sin(a) * d]; })() : [zona.x + (r() - 0.5) * zona.w, zona.z + (r() - 0.5) * zona.d]);
+      const placed = [];
+      for (let tries = 0; tries < n * 80 && placed.length < n; tries++) {
+        const [x, z] = pick();
+        if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < rad * 2)) continue;
+        if (fixedFp.some((f) => Math.hypot(f.x - x, f.z - z) < rad + Math.hypot(f.hb, f.hl) * 0.75)) continue;
+        placed.push([x, z]);
+      }
+      placed.forEach(([x, z], i) => list.push(W.add(name, {x, z}, {...params, ...(per ? per(i) : {}), rotate: giro === 'azar' ? r() * 360 : giro})));
+      if (placed.length < n) console.warn(`genframe: w.scatter solo cabe ${placed.length} de ${n} «${name}» en esa zona sin que se toquen.`);
+      return list;
+    };
+    /** Punto 3D de un destino: pieza, {x, y, z} o [lon, lat]. */
+    const pointOf = (target, out = new T.Vector3()) => {
+      if (target && target.isObject3D) { const b = new T.Box3().setFromObject(target); return b.getCenter(out); }
+      if (target && target.y !== undefined && target.x !== undefined) return out.set(target.x, target.y, target.z);
+      const [x, z] = toXZ(target); return out.set(x, ground === 'none' ? (terrainHeight ? terrainHeight(x, z) : 0) + 12 : HL + 6, z);
+    };
+    /** Una persona señala un destino (pieza, punto o lugar) con el brazo extendido entre t y hasta. brazo: 'der'|'izq'. */
+    W.point = (obj, t, target, {brazo = 'der', dur = 0.45, hasta = null} = {}) => {
+      const sh = (obj.userData.joints || {})['hombro_' + brazo], el = (obj.userData.joints || {})['codo_' + brazo];
+      if (!sh) return;
+      const q0 = sh.quaternion.clone(), e0 = el ? el.rotation.x : 0, aim = new T.Vector3(), from = new T.Vector3(), down = new T.Vector3(0, -1, 0), pq = new T.Quaternion(), qt = new T.Quaternion();
+      updaters.push((tt) => {
+        if (tt < t) return;
+        const k = K.smooth(K.ramp(tt, t, t + dur)) * (hasta ? 1 - K.smooth(K.ramp(tt, hasta, hasta + dur)) : 1);
+        sh.quaternion.copy(q0);
+        obj.updateMatrixWorld(true);
+        sh.getWorldPosition(from); pointOf(target, aim);
+        const d = aim.sub(from).normalize();
+        sh.parent.getWorldQuaternion(pq);
+        d.applyQuaternion(pq.invert());
+        qt.setFromUnitVectors(down, d);
+        sh.quaternion.copy(q0).slerp(qt, k);
+        if (el) el.rotation.x = e0 * (1 - k);
+      });
+    };
+    /** Una persona gira la cabeza hacia un destino entre t y t+dur (con límites naturales). */
+    W.look = (obj, t, target, {dur = 0.5} = {}) => {
+      const hd = (obj.userData.joints || {}).cabeza;
+      if (!hd) return;
+      const y0 = hd.rotation.y, x0 = hd.rotation.x, p = new T.Vector3(), aim = new T.Vector3(), q = new T.Quaternion();
+      updaters.push((tt) => {
+        if (tt < t) return;
+        const k = K.smooth(K.ramp(tt, t, t + dur));
+        hd.rotation.set(x0, y0, hd.rotation.z);
+        obj.updateMatrixWorld(true);
+        hd.getWorldPosition(p); pointOf(target, aim);
+        const d = aim.sub(p).applyQuaternion(hd.parent.getWorldQuaternion(q).invert());
+        hd.rotation.y = y0 + K.clamp(Math.atan2(d.x, d.z), -1.2, 1.2) * k;
+        hd.rotation.x = x0 + K.clamp(-Math.atan2(d.y, Math.hypot(d.x, d.z)), -0.6, 0.6) * k;
+      });
+    };
+    /** Sacude la cámara en t (amount ≈ 1 un golpe fuerte); se apaga sola en medio segundo. */
+    const shakes = [];
+    W.shake = (t, amount = 1) => shakes.push({t, a: amount});
 
     // Cámara: tomas [t, {lon, lat | x, z, dist, pitch, yaw}] con transición suave y deriva lenta.
     const cam = {x: 0, z: 0, dist: 520, pitch: 52, yaw: 0, h: HL};
@@ -483,14 +905,34 @@
     let drift = 2.5;
     /** Velocidad de giro lento de la cámara (grados por segundo; 0 = quieta). */
     W.drift = (degPerSecond) => { drift = degPerSecond; };
-    /** Hace flotar un objeto en el mar con olas: sube, baja y cabecea con ellas (offset: cuánto sobresale). */
-    W.float = (obj, {offset = 0, tilt = 1} = {}) => {
-      const bb = new T.Box3().setFromObject(obj), bs = bb.getSize(new T.Vector3());
-      const e = Math.max(4, Math.max(bs.x, bs.z) * 0.4);
+    /**
+     * Hace flotar un objeto en el mar: muestrea el oleaje en 6 puntos de su casco, ajusta altura, cabeceo y balanceo, y
+     * les da inercia (responde con retraso según su eslora, como un barco con masa). Todo determinista (solo depende de t).
+     * opts: offset (cuánto sobresale), tilt (0-1, cuánto cabecea), maxPitch y maxRoll (grados), inercia (1 = según eslora).
+     */
+    W.float = (obj, {offset = 0, tilt = 1, maxPitch = 12, maxRoll = 10, inercia = 1} = {}) => {
+      const lim = obj.userData.local || (() => { const b = new T.Box3().setFromObject(obj); return {min: b.min.sub(obj.position), max: b.max.sub(obj.position)}; })();
+      const hl = Math.max(2, (lim.max.z - lim.min.z) / 2), hb = Math.max(1.5, (lim.max.x - lim.min.x) / 2), cz = (lim.max.z + lim.min.z) / 2, cx = (lim.max.x + lim.min.x) / 2;
+      const pts = [[cx - hb * 0.8, cz + hl * 0.85], [cx + hb * 0.8, cz + hl * 0.85], [cx - hb * 0.8, cz - hl * 0.85], [cx + hb * 0.8, cz - hl * 0.85], [cx - hb * 0.85, cz], [cx + hb * 0.85, cz]];
+      const tau = Math.min(1.4, (0.12 + hl / 450) * inercia), N = 7, dt = tau / 2.5;
+      const wts = Array.from({length: N}, (_, k) => Math.exp(-(k * dt) / tau)), wsum = wts.reduce((a, b) => a + b, 0);
+      obj.rotation.order = 'YXZ';
+      obj.userData.floating = true;
+      floaters.push({obj, hl, hb, speed: (t) => speedOf(obj, t)});
+      const r = (d) => (d * Math.PI) / 180;
       updaters.push((tt) => {
-        const x = obj.position.x, z = obj.position.z;
-        obj.position.y = seaHeight(x, z, tt) + offset;
-        if (tilt) { const base = obj.userData.floatRot ??= {x: obj.rotation.x, z: obj.rotation.z}; obj.rotation.x = base.x - Math.atan2(seaHeight(x, z + e, tt) - seaHeight(x, z - e, tt), 2 * e) * 0.6 * tilt; obj.rotation.z = base.z + Math.atan2(seaHeight(x + e, z, tt) - seaHeight(x - e, z, tt), 2 * e) * 0.6 * tilt; }
+        const yaw = obj.rotation.y, c = Math.cos(yaw), sn = Math.sin(yaw), x = obj.position.x, z = obj.position.z;
+        let H = 0, P = 0, R = 0;
+        for (let k = 0; k < N; k++) {
+          const ts = tt - k * dt;
+          const h = pts.map(([lx, lz]) => seaHeight(x + lx * c + lz * sn, z - lx * sn + lz * c, ts));
+          H += wts[k] * (h[0] + h[1] + h[2] + h[3] + h[4] + h[5]) / 6;
+          P += wts[k] * Math.atan2((h[0] + h[1]) / 2 - (h[2] + h[3]) / 2, hl * 1.7);
+          R += wts[k] * Math.atan2((h[1] + h[3] + h[5]) / 3 - (h[0] + h[2] + h[4]) / 3, hb * 1.65);
+        }
+        obj.position.y = H / wsum + offset;
+        obj.rotation.x = -K.clamp((P / wsum) * tilt, -r(maxPitch), r(maxPitch));
+        obj.rotation.z = K.clamp((R / wsum) * tilt, -r(maxRoll), r(maxRoll));
       });
     };
     /**
@@ -545,15 +987,41 @@
         }
       });
     };
+    /**
+     * Cámara segura: cuánto hay que subirla en t para que ni ella ni la línea hasta lo que mira queden dentro de una ola
+     * o del terreno. Se mira el peor caso del último medio segundo, así sube con suavidad y no tiembla con cada ola.
+     */
+    const safeLift = (t, pos, look) => {
+      if (!ocean && !terrainHeight) return 0;
+      const margin = Math.max(2, cam.dist * 0.03);
+      let lift = 0;
+      for (const ts of [t, t - 0.15, t - 0.3, t - 0.45, t - 0.6]) {
+        for (let i = 0; i <= 9; i++) {
+          const u = i / 10, x = pos.x + (look.x - pos.x) * u, y = pos.y + (look.y - pos.y) * u, z = pos.z + (look.z - pos.z) * u;
+          const top = Math.max(ocean ? seaHeight(x, z, ts) + (i === 0 ? margin : 0.6) : -Infinity, terrainHeight ? terrainHeight(x, z) + (i === 0 ? 3 : 0.6) : -Infinity);
+          if (top > y) lift = Math.max(lift, (top - y) / (1 - u));
+        }
+      }
+      return Math.min(lift, cam.dist * 0.8);
+    };
+    const lookAt = new T.Vector3();
     const render = (t) => {
-      for (const fn of updatersEarly) fn(t);
-      for (const fn of updaters) fn(t);
-      renderer.toneMappingExposure = exposure;
+      // Cámara primero (el mar la necesita para el reflejo), con su seguridad y las sacudidas.
       const yaw = ((cam.yaw + (t - T0) * drift) * Math.PI) / 180, pitch = (K.clamp(cam.pitch, 2, 89) * Math.PI) / 180;
       camera.near = Math.max(0.5, cam.dist / 60); camera.updateProjectionMatrix();
       camera.position.set(cam.x + Math.sin(yaw) * Math.cos(pitch) * cam.dist, cam.h + Math.sin(pitch) * cam.dist, cam.z + Math.cos(yaw) * Math.cos(pitch) * cam.dist);
-      { const floor = Math.max(ocean ? seaHeight(camera.position.x, camera.position.z, t) + Math.max(3, cam.dist * 0.04) : -Infinity, terrainHeight ? terrainHeight(camera.position.x, camera.position.z) + 3 : -Infinity); if (camera.position.y < floor) camera.position.y = floor; }
-      camera.lookAt(cam.x, cam.h, cam.z);
+      lookAt.set(cam.x, cam.h, cam.z);
+      camera.position.y += safeLift(t, camera.position, lookAt);
+      let sx = 0, sy = 0;
+      shakes.forEach((q, i) => { const a = t - q.t; if (a >= 0 && a < 0.7) { const k = q.a * Math.exp(-a * 7) * cam.dist * 0.006; sx += Math.sin(a * 61 + i * 1.7) * k; sy += Math.cos(a * 47 + i * 2.3) * k; } });
+      camera.position.x += sx; camera.position.y += sy;
+      camera.lookAt(lookAt.x + sx * 0.5, lookAt.y + sy * 0.5, lookAt.z);
+      camera.updateMatrixWorld();
+      for (const fn of updatersEarly) fn(t);
+      for (const fn of updaters) fn(t);
+      // Lo que está apoyado en el suelo lo sigue aunque se mueva (salvo lo que flota, vuela o anda por su cuenta).
+      if (terrainHeight) for (const o of objects) if (o.userData.grounded && !o.userData.floating && !(o.userData.walking || []).some((w) => t >= w.t0 - 0.1 && t <= w.t1 + 0.5) && o.parent === scene) o.position.y = terrainHeight(o.position.x, o.position.z);
+      renderer.toneMappingExposure = exposure;
       const el = (S.elev * Math.PI) / 180, az = (S.az * Math.PI) / 180;
       sun.position.set(cam.x + Math.cos(el) * Math.sin(az) * 600, Math.sin(el) * 600 + 80, cam.z + Math.cos(el) * Math.cos(az) * 600);
       sun.target.position.set(cam.x, 0, cam.z);
@@ -567,7 +1035,7 @@
       if (haze || S.haze) { const far = Math.max(cam.dist * (haze || S.haze), 420); scene.fog.near = far * 0.08; scene.fog.far = far; }
       else { scene.fog.near = cam.dist * 1.4; scene.fog.far = cam.dist * 4.5; }
       if (sunSprite) { const d = scene.fog.far * 0.9; sunSprite.position.set(camera.position.x + Math.cos(el) * Math.sin(az) * d, camera.position.y + Math.sin(el) * d * 0.9 + 10, camera.position.z + Math.cos(el) * Math.cos(az) * d); sunSprite.scale.setScalar(d * 0.55); }
-            if (S.night) objects.forEach((o) => o.traverse((n) => { if (n.material && n.material.emissiveMap) n.material.emissiveIntensity = 1.4; }));
+      if (S.night) objects.forEach((o) => o.traverse((n) => { if (n.material && n.material.emissiveMap) n.material.emissiveIntensity = 1.4; }));
       renderer.render(scene, camera);
       ctx2d.clearRect(0, 0, K.W, K.H);
       ctx2d.drawImage(renderer.domElement, 0, 0);
@@ -582,6 +1050,48 @@
     };
     K.onFrame((t) => { if (t >= T0 - 0.8 && t <= T1 + 0.1) render(t); });
     W.render = render;
+    /**
+     * Auditoría física del fotograma t (después de dibujarlo): piezas que se atraviesan, cámara dentro del agua, del
+     * terreno o de una pieza, sujeto tapado por una ola, piezas enterradas, flotando o hundidas, y pies que patinan.
+     * Devuelve [{tipo, grave, texto}]. La usa «genframe auditar».
+     */
+    W.audit = (t) => {
+      const out = [];
+      const tops = objects.filter((o) => o.parent === scene && !o.userData.ghost && o.visible !== false && o.scale.x > 0.05);
+      const shapes = tops.map((o) => ({o, sh: obbsOf(o)}));
+      for (let i = 0; i < shapes.length; i++) for (let j = i + 1; j < shapes.length; j++) {
+        const c = collide(shapes[i].sh, shapes[j].sh, 1.0);
+        if (c) out.push({tipo: 'choque', grave: c.pen > 2.5, texto: `«${shapes[i].o.userData.model}» atraviesa «${shapes[j].o.userData.model}» (${(c.pen / 10).toFixed(2)} m)`});
+      }
+      const cp = camera.position;
+      if (ocean && cp.y < seaHeight(cp.x, cp.z, t) + 0.5) out.push({tipo: 'camara', grave: true, texto: 'la cámara está dentro del agua'});
+      if (terrainHeight && cp.y < terrainHeight(cp.x, cp.z) + 0.5) out.push({tipo: 'camara', grave: true, texto: 'la cámara está bajo el terreno'});
+      for (const {o, sh} of shapes) {
+        if (sh.box.containsPoint(cp) && sh.obbs.some((b) => { const d = new T.Vector3().subVectors(cp, b.c); return [0, 1, 2].every((k) => Math.abs(d.dot(b.ax[k])) < b.half[k]); })) out.push({tipo: 'camara', grave: true, texto: `la cámara está dentro de «${o.userData.model}»`});
+      }
+      if (ocean) { let blocked = false; for (let i = 1; i < 10; i++) { const u = i / 10, x = cp.x + (lookAt.x - cp.x) * u, y = cp.y + (lookAt.y - cp.y) * u, z = cp.z + (lookAt.z - cp.z) * u; if (seaHeight(x, z, t) > y + 0.5) blocked = true; } if (blocked) out.push({tipo: 'camara', grave: true, texto: 'una ola tapa lo que mira la cámara'}); }
+      // Pieza pegada a la cámara que tapa lo que mira (en el primer 35 % del camino hasta el sujeto).
+      for (const {o, sh} of shapes) {
+        let hits = 0;
+        for (let i = 1; i <= 7; i++) { const u = i * 0.05, q = new T.Vector3(cp.x + (lookAt.x - cp.x) * u, cp.y + (lookAt.y - cp.y) * u, cp.z + (lookAt.z - cp.z) * u); if (sh.box.containsPoint(q) && sh.obbs.some((b) => { const d = new T.Vector3().subVectors(q, b.c); return [0, 1, 2].every((k) => Math.abs(d.dot(b.ax[k])) < b.half[k]); })) hits++; }
+        if (hits) out.push({tipo: 'camara', grave: false, texto: `«${o.userData.model}» pasa pegada a la cámara y tapa el plano`});
+      }
+      for (const {o, sh} of shapes) {
+        if (o.userData.grounded && !o.userData.floating && terrainHeight) { const g = terrainHeight(o.position.x, o.position.z), d = o.position.y - g; if (Math.abs(d) > 3) out.push({tipo: 'suelo', grave: false, texto: `«${o.userData.model}» ${d > 0 ? 'flota' : 'está enterrada'} ${(Math.abs(d) / 10).toFixed(1)} m`}); }
+        if (ocean && !o.userData.floating && sh.box.max.y < seaHeight(o.position.x, o.position.z, t) - 1 && !sh.box.isEmpty()) out.push({tipo: 'agua', grave: false, texto: `«${o.userData.model}» queda entera bajo el agua`});
+        // Pies que patinan: acción de andar o correr con un desplazamiento que no le corresponde (usa w.walk).
+        const acts = (o.userData._acts || []).filter((a) => (a.name === 'andar' || a.name === 'correr') && t >= a.t0 && t <= a.t1);
+        const walking = (o.userData.walking || []).some((w) => t >= w.t0 && t <= w.t1);
+        const prev = o.userData._auditPrev;
+        if (acts.length && !walking && prev && t - prev.t > 0.05 && t - prev.t < 0.6) {
+          const v = Math.hypot(o.position.x - prev.x, o.position.z - prev.z) / (t - prev.t), g = gaitOf(o, acts[0].name), nat = (g.stride * g.omega) / (2 * Math.PI) * (acts[0].rate || 1);
+          if (Math.abs(v / nat - 1) > 0.4) out.push({tipo: 'pies', grave: false, texto: `«${o.userData.model}» ${acts[0].name} a ${(v / 10).toFixed(1)} m/s con zancada de ${(nat / 10).toFixed(1)} m/s: los pies patinan (usa w.walk)`});
+        }
+        o.userData._auditPrev = {t, x: o.position.x, z: o.position.z};
+      }
+      return out;
+    };
+    K._worlds.push({T0, T1, W, root});
     return W;
   };
 })();

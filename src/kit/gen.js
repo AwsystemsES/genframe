@@ -50,6 +50,8 @@
     const hair = {style: pick((p.hair || {}).style, HAIR, 'corto'), color: (p.hair || {}).color || '#3a2a20'};
     const hw = pick(p.headwear, HEADWEAR, 'ninguno');
     const thin = {outline: 0.04};
+    // La piel lleva un poco de luz propia: la cara se lee aunque la tape la visera o el ala del casco.
+    const skinO = {outline: 0.05, extra: {emissive: skin, emissiveIntensity: 0.22}}, skinThin = {outline: 0.04, extra: {emissive: skin, emissiveIntensity: 0.22}};
 
     const headH = H / heads;
     const headR = headH * 0.5;
@@ -92,7 +94,8 @@
       const flap = F.box(shoulderW * 0.64, torsoL * 0.18, shoulderW * 0.32, shade(p.backpack, 0.85), 0, {outline: 0}); flap.position.set(0, torsoL * 0.76, -cr * 0.66 - shoulderW * 0.14); spine.add(flap);
       for (const s of [-1, 1]) { const strap = F.tube([[s * shoulderW * 0.22, torsoL * 0.95, 0], [s * shoulderW * 0.24, torsoL * 0.7, cr * 0.62], [s * shoulderW * 0.22, torsoL * 0.25, wr * 0.66]], limbR * 0.12, shade(p.backpack, 0.7), {o: {outline: 0}}); spine.add(strap); }
     }
-    if (p.rifle) {
+    const hold = p.rifle === 'manos';
+    if (p.rifle && !hold) {
       const rifle = new T.Group();
       rifle.add(F.at(F.box(0.5, H * 0.5, 0.7, p.rifle === true ? '#4a3626' : p.rifle, 0, {outline: 0.05}), 0, 0, 0));
       rifle.add(F.at(F.cyl(0.14, 0.14, H * 0.26, '#2a2a2c', 8, 0, {outline: 0}), 0, H * 0.34, 0.1));
@@ -101,15 +104,15 @@
 
     // Cuello y cabeza.
     const neck = F.pivot(spine, 'cuello', 0, torsoL * 0.97, 0); J.cuello = neck;
-    const neckMesh = F.cyl(headR * 0.36, headR * 0.42, neckL + headR * 0.3, skin, 12, (neckL + headR * 0.3) / 2, thin); neck.add(neckMesh);
+    const neckMesh = F.cyl(headR * 0.36, headR * 0.42, neckL + headR * 0.3, skin, 12, (neckL + headR * 0.3) / 2, skinThin); neck.add(neckMesh);
     if (jacket || p.collar) { const collar = F.cyl(headR * 0.5, headR * 0.56, neckL * 0.7, jacket || top, 14, neckL * 0.3, thin); neck.add(collar); }
     const head = F.pivot(neck, 'cabeza', 0, neckL, 0); J.cabeza = head;
-    const skull = ellipsoid(headR * 0.86, headR, headR * 0.92, skin); skull.position.y = headR; head.add(skull);
-    const jaw = ellipsoid(headR * 0.66, headR * 0.5, headR * 0.7, skin, thin); jaw.position.set(0, headR * 0.6, headR * 0.12); head.add(jaw);
-    const nose = F.cone(headR * 0.12, headR * 0.32, skin, 8, 0, {outline: 0.03}); nose.rotation.x = Math.PI / 2; nose.position.set(0, headR * 0.95, headR * 0.98); head.add(nose);
+    const skull = ellipsoid(headR * 0.86, headR, headR * 0.92, skin, skinO); skull.position.y = headR; head.add(skull);
+    const jaw = ellipsoid(headR * 0.66, headR * 0.5, headR * 0.7, skin, skinThin); jaw.position.set(0, headR * 0.6, headR * 0.12); head.add(jaw);
+    const nose = F.cone(headR * 0.12, headR * 0.32, skin, 8, 0, {outline: 0.03, extra: skinO.extra}); nose.rotation.x = Math.PI / 2; nose.position.set(0, headR * 0.95, headR * 0.98); head.add(nose);
     for (const s of [-1, 1]) {
-      const ear = ellipsoid(headR * 0.12, headR * 0.22, headR * 0.1, skin, thin); ear.position.set(s * headR * 0.86, headR * 1.0, 0); head.add(ear);
-      const eye = F.sphere(headR * (style === 'chibi' ? 0.13 : 0.085), '#1a1614', 0, {outline: 0}); eye.position.set(s * headR * 0.33, headR * 1.1, headR * 0.86); head.add(eye);
+      const ear = ellipsoid(headR * 0.12, headR * 0.22, headR * 0.1, skin, skinThin); ear.position.set(s * headR * 0.86, headR * 1.0, 0); head.add(ear);
+      const eye = F.sphere(headR * (style === 'chibi' ? 0.13 : 0.1), '#1a1614', 0, {outline: 0}); eye.position.set(s * headR * 0.33, headR * 1.1, headR * 0.86); head.add(eye);
       const brow = F.box(headR * 0.3, headR * 0.06, headR * 0.06, shade(hair.color, 0.9), 0, {outline: 0}); brow.position.set(s * headR * 0.33, headR * 1.3, headR * 0.86); brow.rotation.z = s * -0.08; head.add(brow);
     }
     const mouth = F.box(headR * 0.3, headR * 0.05, headR * 0.05, shade(skin, 0.6), 0, {outline: 0}); mouth.position.set(0, headR * 0.62, headR * 0.86); mouth.name = 'boca'; head.add(mouth);
@@ -134,7 +137,7 @@
     if (hw === 'gorra_plato') {
       const crown = F.cyl(headR * 1.05, headR * 0.86, headR * 0.5, hc, 22, 0, {outline: 0.05}); crown.position.y = headR * 1.72; head.add(crown);
       const band = F.cyl(headR * 0.88, headR * 0.88, headR * 0.2, shade(hc, 0.6), 22, 0, {outline: 0}); band.position.y = headR * 1.5; head.add(band);
-      const visor = F.mesh(new T.CylinderGeometry(headR * 0.55, headR * 0.55, headR * 0.06, 18, 1, false, -Math.PI / 2, Math.PI), '#151515', {outline: 0.04}); visor.position.set(0, headR * 1.42, headR * 0.6); visor.rotation.x = 0.25; head.add(visor);
+      const visor = F.mesh(new T.CylinderGeometry(headR * 0.55, headR * 0.55, headR * 0.06, 18, 1, false, -Math.PI / 2, Math.PI), '#151515', {outline: 0.04}); visor.position.set(0, headR * 1.45, headR * 0.6); visor.rotation.x = 0.1; head.add(visor);
     }
     if (hw === 'gorra') { const c = F.mesh(new T.SphereGeometry(headR * 0.98, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hc, {outline: 0.05}); c.position.y = headR * 1.12; head.add(c); const v = F.mesh(new T.CylinderGeometry(headR * 0.62, headR * 0.62, headR * 0.06, 18, 1, false, -Math.PI / 2, Math.PI), shade(hc, 0.85), {outline: 0.04}); v.position.set(0, headR * 1.15, headR * 0.7); head.add(v); }
     if (hw === 'boina') { const c = ellipsoid(headR * 1.08, headR * 0.32, headR * 1.05, hc, {outline: 0.05}); c.position.set(headR * 0.12, headR * 1.72, 0); c.rotation.z = -0.25; head.add(c); }
@@ -148,14 +151,14 @@
       const sh = F.pivot(spine, 'hombro_' + side, s * shoulderW * 0.44, torsoL * 0.86, 0); J['hombro_' + side] = sh;
       sh.rotation.z = s * 0.1;
       const sleeve = jacket || top;
-      sh.add(ellipsoid(limbR * 1.35, limbR * 1.25, limbR * 1.3, sleeve, thin));
+      sh.add(ellipsoid(limbR * 1.12, limbR * 1.04, limbR * 1.08, sleeve, thin));
       sh.add(limb(limbR * 1.08, limbR * 0.92, armL * 0.5, sleeve, thin));
       const el = F.pivot(sh, 'codo_' + side, 0, -armL * 0.5, 0); J['codo_' + side] = el;
       el.rotation.x = -0.12;
       el.add(limb(limbR * 0.9, limbR * 0.74, armL * 0.44, sleeve, thin));
       const cuff = F.cyl(limbR * 0.8, limbR * 0.8, limbR * 0.4, shade(sleeve, 0.8), 12, 0, {outline: 0}); cuff.position.y = -armL * 0.42; el.add(cuff);
       const hand = F.pivot(el, 'mano_' + side, 0, -armL * 0.46, 0); J['mano_' + side] = hand;
-      const palm = ellipsoid(limbR * 0.62, limbR * 1.05, limbR * 0.36, p.gloves || skin, thin); palm.position.y = -limbR * 0.9; hand.add(palm);
+      const palm = ellipsoid(limbR * 0.62, limbR * 1.05, limbR * 0.36, p.gloves || skin, p.gloves ? thin : skinThin); palm.position.y = -limbR * 0.9; hand.add(palm);
       const thumb = limb(limbR * 0.22, limbR * 0.18, limbR * 0.9, p.gloves || skin, {outline: 0.03}); thumb.position.set(0, -limbR * 0.4, limbR * 0.3); thumb.rotation.x = 0.7; hand.add(thumb);
     }
     // Piernas: muslo → rodilla → tobillo → pie.
@@ -172,6 +175,16 @@
     }
     if (p.skirt) { const sk = F.lathe([[hipW * 0.55, 0], [hipW * 0.75, -legL * 0.45]], p.skirt, {seg: 22}); sk.scale.z = 0.8; sk.position.y = 0; hips.add(sk); }
 
+    // Fusil sujeto con las dos manos, cruzado delante del pecho (la carrera ya no balancea los brazos).
+    if (hold) {
+      const rifle = new T.Group();
+      const wood = typeof p.rifleColor === 'string' ? p.rifleColor : '#4a3626';
+      rifle.add(F.at(F.box(H * 0.03, H * 0.05, H * 0.44, wood, 0, {outline: 0.04}), 0, 0, 0));
+      const bar = F.cyl(H * 0.009, H * 0.009, H * 0.3, '#262628', 8, 0, {outline: 0}); bar.rotation.x = Math.PI / 2; bar.position.z = H * 0.35; rifle.add(bar);
+      rifle.position.set(shoulderW * 0.05, torsoL * 0.5, cr * 1.05); rifle.rotation.set(-0.45, 0.55, 0.25); spine.add(rifle);
+      J.hombro_der.rotation.x = -0.75; J.hombro_der.rotation.z += -0.3; J.hombro_izq.rotation.x = -1.0; J.hombro_izq.rotation.z += 0.45;
+      J.codo_der.rotation.x = -1.2; J.codo_izq.rotation.x = -1.0;
+    }
     // Acciones: ciclos que ponen la rotación de las articulaciones (fase en segundos, k = intensidad 0-1).
     const base = {};
     for (const [n, j] of Object.entries(J)) base[n] = {x: j.rotation.x, y: j.rotation.y, z: j.rotation.z, py: j.position.y};
@@ -180,8 +193,10 @@
       const a = Math.sin(ph * speed);
       set('muslo_izq', 'x', -a * amp * k); set('muslo_der', 'x', a * amp * k);
       set('rodilla_izq', 'x', Math.max(0, a) * amp * 1.3 * k); set('rodilla_der', 'x', Math.max(0, -a) * amp * 1.3 * k);
-      set('hombro_izq', 'x', a * amp * 0.8 * k); set('hombro_der', 'x', -a * amp * 0.8 * k);
-      set('codo_izq', 'x', -(0.3 + Math.max(0, a) * 0.5) * k); set('codo_der', 'x', -(0.3 + Math.max(0, -a) * 0.5) * k);
+      if (!hold) {
+        set('hombro_izq', 'x', a * amp * 0.8 * k); set('hombro_der', 'x', -a * amp * 0.8 * k);
+        set('codo_izq', 'x', -(0.3 + Math.max(0, a) * 0.5) * k); set('codo_der', 'x', -(0.3 + Math.max(0, -a) * 0.5) * k);
+      } else { set('hombro_izq', 'x', Math.sin(ph * speed * 2) * 0.05 * k); set('hombro_der', 'x', Math.sin(ph * speed * 2) * 0.05 * k); }
       set('columna', 'x', lean * k);
       J.cadera.position.y = base.cadera.py + Math.abs(Math.cos(ph * speed)) * H * 0.012 * k;
     };
@@ -189,10 +204,13 @@
       respirar(ph, k) { set('columna', 'x', Math.sin(ph * 1.6) * 0.02 * k); set('cabeza', 'y', Math.sin(ph * 0.4) * 0.08 * k); },
       andar(ph, k) { gait(ph, k, 0.45, 0.04, 6.2); },
       correr(ph, k) { gait(ph, k, 0.85, 0.22, 10); },
+      correr_agachado(ph, k) { gait(ph, k, 0.7, 0.5, 10); set('cuello', 'x', -0.3 * k); },
       hablar(ph, k) { set('cabeza', 'x', Math.sin(ph * 2.3) * 0.06 * k); set('hombro_der', 'x', (-0.5 + Math.sin(ph * 1.7) * 0.25) * k); set('codo_der', 'x', (-0.9 + Math.sin(ph * 3.1) * 0.3) * k); },
       saludar(ph, k) { set('hombro_der', 'z', -2.6 * k); set('codo_der', 'z', Math.sin(ph * 7) * 0.4 * k); },
     };
     root.userData.size = {w: shoulderW * 1.3, h: H, d: H * 0.18};
+    // Zancada de cada paso (la usa w.walk para que los pies no patinen): omega = rad/s del ciclo, stride = avance por ciclo.
+    root.userData.gaits = {andar: {omega: 6.2, stride: H * 0.8}, correr: {omega: 10, stride: H * 1.4}, correr_agachado: {omega: 10, stride: H * 1.2}};
     return root;
   }
 
@@ -259,6 +277,23 @@
       const deck = F.mesh(new T.ShapeGeometry(shape), p.deck === true ? '#8a8172' : p.deck, {outline: 0}); deck.rotation.x = Math.PI / 2; deck.scale.y = -1; deck.position.y = D * 0.985; g.add(deck);
     } else {
       const floor = F.box(B * 0.86, D * 0.05, L * 0.86, shade(color, 0.7), D * 0.12, {outline: 0}); g.add(floor);
+    }
+    // Colisionadores (el casco es cóncavo: lo que va dentro no choca con él) y máscara de agua en los cascos abiertos.
+    {
+      const inv = new T.MeshBasicMaterial({visible: false});
+      const cbox = (w, h, d, x, y, z) => { const m = new T.Mesh(new T.BoxGeometry(w, h, d), inv); m.position.set(x, y, z); m.visible = false; m.userData.collider = true; g.add(m); return m; };
+      const th = Math.max(0.6, B * 0.04);
+      const cols = [cbox(th, D, L * 0.9, -B / 2 + th / 2, D / 2, 0), cbox(th, D, L * 0.9, B / 2 - th / 2, D / 2, 0), cbox(B * 0.9, Math.max(0.6, D * 0.12), L * 0.9, 0, D * 0.06, 0), cbox(B * 0.9, D, th, 0, D / 2, -L / 2 + th / 2)];
+      if (p.deck) cols.push(cbox(B * 0.9, th, L * 0.9, 0, D - th / 2, 0));
+      shell.userData.colliders = cols;
+      if (!p.deck) {
+        const shp = new T.Shape(); const pts = [];
+        for (let i = 0; i <= N; i++) pts.push([halfW(i / N) * 0.98, -L / 2 + (i / N) * L]);
+        shp.moveTo(-pts[0][0], pts[0][1]); for (const [x, z] of pts) shp.lineTo(-x, z); for (const [x, z] of pts.slice().reverse()) shp.lineTo(x, z);
+        const mask = new T.Mesh(new T.ShapeGeometry(shp), new T.MeshBasicMaterial({colorWrite: false, side: T.DoubleSide}));
+        mask.rotation.x = Math.PI / 2; mask.scale.y = -1; mask.position.y = D * 0.97; mask.renderOrder = 1; mask.userData.noCollide = true; mask.name = 'mascara_agua';
+        g.add(mask);
+      }
     }
     if (p.rail !== false) for (const s of [-1, 1]) { const pts = []; for (let i = 0; i <= N; i += 2) { const t = i / N; pts.push([s * halfW(t), deckY(t) + D * 0.04, -L / 2 + t * L]); } g.add(F.tube(pts, Math.max(0.15, D * 0.03), shade(color, 0.75), {seg: 60, radial: 6, o: {outline: 0}})); }
     // Tracas (refuerzos horizontales del costado) y, si se pide, cabina o puente a popa.

@@ -167,6 +167,7 @@ ${bg.grain}
 .body{font-family:var(--body)}
 .label{font-family:var(--label);letter-spacing:.08em;text-transform:uppercase}
 .hand{font-family:var(--hand)}
+.scene-root:has(canvas) .title,.scene-root:has(canvas) .label{text-shadow:0 3px 0 rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.55)}
 #fx-vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 58%,rgba(0,0,0,${art.vignette ?? 0.25}) 100%)}
 .fallback{position:absolute;left:${art.vertical ? 80 : 160}px;right:${art.vertical ? 80 : 160}px;top:${art.vertical ? 500 : 300}px;font-family:var(--title);font-size:72px;line-height:1.15;text-align:center}
 ${captionCss(art)}`;

@@ -58,6 +58,18 @@ No son modelos fijos: son constructores de calidad que configuras con parámetro
 
 Ejemplo: `const g = f.gen.human({style: 'real', jacket: '#5b5d3e', bottom: '#4f5236', headwear: 'casco_m1', headwearColor: '#4d5236', backpack: '#6b6648', rifle: true}); return g;`
 
+Lo que ya traen los generadores (no lo rehagas en la pieza):
+- **`f.gen.human`:**
+  - `rifle: 'manos'` (fusil sujeto con las dos manos; al correr, los brazos no se balancean) y la acción `correr_agachado`.
+  - `userData.gaits` con la zancada de cada paso, que usa `w.walk`.
+  - Piel con un poco de luz propia: la cara se lee bajo viseras y cascos.
+  - Hombreras proporcionadas.
+- **`f.gen.hull`:**
+  - Colisionadores de pared, fondo y popa: lo que va dentro no choca con el casco.
+  - Si no tiene cubierta, una máscara que impide que el agua se dibuje dentro.
+- **Piezas cóncavas propias** (una caja abierta, un cuenco, un hangar): pon `userData.colliders = [mallas invisibles con userData.collider = true]` en la malla cóncava para que el motor no la trate como un bloque macizo.
+- **Partes que no deben chocar** (cables, humo, banderas): `userData.noCollide = true`.
+
 **Articulaciones y acciones** (si la ficha las pide): cada parte que se mueve cuelga de un `f.pivot` con el nombre de la ficha, colocado en su punto de giro real (hombro, codo, cadera, rodilla, cuello, bisagra de la puerta, eje de la rueda). La escena las gira con `w.pose(o, t, {nombre: {x, y, z}})` en grados. Las acciones son funciones que defines en `grupo.userData.actions = {andar(fase, k) {…}, hablar(fase, k) {…}}`: reciben la fase en segundos y una intensidad 0-1 (para entrar y salir suave) y ponen la rotación de las articulaciones (`rotation.x = Math.sin(fase * 6) * 0.5 * k`). Búscalas por nombre con `grupo.getObjectByName('rodilla_izq')`.
 
 **Oficio para personas y animales** (lo que más se nota cuando falla):

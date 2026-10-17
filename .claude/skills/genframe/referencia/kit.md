@@ -92,15 +92,23 @@ const w = K.world3d(root, T0, T1, {ground: 'none'|'spain'|'iberia'|'europe'|'med
   terrain: {coast: {z: -400, beach: 80, bluff: 40, bluffWidth: 70, cliff: false}, z: -900, roughness: 6, colors: {sand, grass, rock, wet}},  // tierra en z < coast.z, mar delante
   clouds: {amount: 0.7, dark: false, height: 400, size: 300}});   // nubes volumétricas
 const lancha = w.add('id-del-reparto', {x: 0, z: 0}, {rotate: 180});   // en terreno se apoya sola en el suelo
-w.float(lancha);                                                    // flota y cabecea con las olas
+w.float(lancha, {maxPitch: 12, maxRoll: 10});                     // flota con inercia: 6 puntos del casco, cabeceo y balanceo limitados
 w.frame(T0, lancha, {shot: 'general'|'conjunto'|'medio'|'cerrado'|'detalle', angle: 'frontal'|'tres_cuartos'|'lateral'|'espalda'|'picado'|'contrapicado'|'cenital', side: 1|-1});  // encuadre automático, PRIMERA toma sin animación
 w.frame(K.cue('rampa'), [lancha, soldado], {shot: 'cerrado', angle: 'tres_cuartos', dur: 1.4});   // siguientes: vuelo de cámara al nuevo encuadre
 w.shot(t, {x, z}, {dist, pitch, yaw, h, dur});                     // toma manual, solo si w.frame no basta
 w.drift(1.5);                                                       // giro lento continuo (grados/s); 0 = quieta
 w.pose(o, t, {hombro_der: {x: -80}}, 0.5);  w.act(o, 'andar', t0, t1, {rate: 1});   // articulaciones y acciones del reparto
-w.move(o, t, {x: 80, z: 0}, dur);  w.hide(o, t);  w.show(o, t);
+w.move(o, t, {x: 80, z: 0}, dur);  w.hide(o, t);  w.show(o, t);       // w.move: vehículos y barcos (dejan estela si flotan)
+w.walk(persona, [{x, z}, …], t0, {paso: 'andar'|'correr'|'correr_agachado', hasta, velocidad});  // a pie: zancada ligada a la distancia, sigue el terreno y rodea obstáculos (A*)
+w.formation('avion', 5, {x, z}, {tipo: 'V'|'fila'|'columna'|'rejilla', rotate, y, separacion: 1.3});  // n piezas sin solaparse
+w.scatter('roca', 20, {x, z, w, d} | {x, z, r}, {seed, separacion: 1.15, giro: 'azar'});      // reparto sin que se toquen entre sí ni con lo que hay
+w.point(persona, t, destino, {brazo: 'der', hasta});  w.look(persona, t, destino);           // señalar y mirar a una pieza, punto {x,y,z} o [lon, lat]
+w.shake(t, 1);                                                                                  // sacudida de cámara
 w.country('fr', t, '#c84d3b');  w.label('Granada', [lon, lat], t, tFin, {style: 'pin'|'city'|'title', color});
-w.route([[lon, lat], …], t, dur, {color, arc: 0});  w.fx('fire'|'smoke'|'explosion'|'rain'|'sparkle', dónde, t0, t1, {size: 1});
+w.route([[lon, lat], …], t, dur, {color, arc: 0});
+w.fx('fire'|'smoke'|'explosion'|'rain'|'sparkle'|'fogonazo'|'columna', dónde, t0, t1, {size, cada, dir, material: 'arena'|'agua'|'tierra', shake, wind, offset});
+// dónde: [lon, lat], {x, z, y} o UNA PIEZA o articulación (se ancla y la sigue). Con profundidad: lo que hay detrás de algo no se ve.
+// 'fogonazo' en la boca de un cañón (destello + luz, se repite «cada» s); 'columna' = impacto en el suelo o el agua (sube y cae, restos, marca).
 w.flow({x, y, z}, {x, y, z}, t0, t1, {color, n, spread, speed, size, opacity});
 w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(x, z, t);  w.groundHeight(x, z);
 ```
@@ -113,6 +121,14 @@ w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(
 - Luz: nada de escenas en penumbra. De noche o con tormenta, `exposure` 1.4-1.8, cielo de la dirección con luna o relámpagos y el protagonista con colores que destaquen; el contraluz automático recorta las siluetas.
 - Vertical: el protagonista en el centro de la pantalla (w.frame ya lo coloca); arriba, titulares; abajo, libre para subtítulos.
 - Mar y costa: usa `ocean` y `terrain`, nunca un plano liso de color. Barcos y lanchas flotan con `w.float`.
+- Lo que el motor ya hace solo (no lo programes a mano):
+  - **Separar piezas:** `w.add` aparta lo que nace atravesando otra pieza y avisa (`separar: false` para desactivarlo, `fantasma: true` para lo que puede cruzarse).
+  - **Terreno:** lo que va apoyado sigue el terreno aunque se mueva (`suelo: false` para desactivarlo).
+  - **Cámara segura:** nunca se mete en el agua ni en el terreno, y se eleva si una ola tapa lo que mira.
+  - **Cascos abiertos:** el agua no se dibuja dentro de los cascos de `f.gen.hull` sin cubierta.
+  - **Mar:** crestas afiladas (Gerstner), reflejo del cielo, espuma en la línea de flotación y estela al navegar. `ocean` admite además `gerstner`, `reflejo`, `roughness`, `foamSlope`.
+- Personas que se desplazan: SIEMPRE `w.walk`. Mover una persona con `K.tl` o `w.move` mientras anda hace que los pies patinen, y el auditor lo marca.
+- Grupos (aviones, barcos, gente, rocas, árboles): `w.formation` o `w.scatter`, nunca posiciones a ojo que puedan solaparse.
 - Escenas ricas: varios modelos del reparto juntos, repetidos con variaciones (`rotate`, `scale`, parámetros), cámara con intención y algo vivo (acciones, partículas, deriva). Nunca un objeto solo en un plano vacío.
 
 ## Mapas reales
@@ -129,6 +145,13 @@ e.regions['Andalucía']; e.centroids['Madrid, Comunidad de']; e.names; e.project
 El mapa se gira solo hacia lo que pones en `focus`. Para un globo (`'orthographic'`) que mire a un sitio usa `center: [lon, lat]` con las coordenadas REALES del sitio (Rusia `[100, 60]`, Brasil `[-52, -10]`); nunca `rotate`. Un estrecho o una frontera de pocos km se encuadra con una caja de 2–6 grados alrededor (`focus: [[lonO, latS], [lonE, latN]]`), no con los países enteros, y los dos extremos se marcan con `m.project([lon, lat])`. Un país con territorios lejanos (Francia con la Guayana) se encuadra con una caja de la zona que se nombra.
 
 Los mapas de España son datos del IGN: si usas `K.map.spain`, añade en una esquina `© IGN` en 20 px.
+
+## Textos y rótulos que nunca se salen
+
+- `K.title(root, html, {y, size, color, scrim})`: titular centrado en la zona segura.
+- Cualquier `.title` o `.label` se encoge solo si no cabe; con `data-fit="no"` no se toca.
+- `K.map.world` dibuja a sangre cuando es de fondo (`w` ≥ 60 % del lienzo): llega a los bordes sin cortes rectos. Uno pequeño funde sus bordes. Opciones: `bleed`, `fade`.
+- `K.map.labels(m, [{text, ll, color}], {t, stagger, size})`: rótulos de lugares sin solapes, dentro de la zona segura, con línea guía cuando quedan lejos de su punto y esquivando los titulares que ya hay.
 
 ## Recetas que funcionan
 

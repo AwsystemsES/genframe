@@ -3,3 +3,10 @@ dist/
 proyectos/
 .env
 .DS_Store
+
+# Banco de pruebas: se suben las fuentes y la referencia; lo generado no.
+pruebas/*/proyecto/
+pruebas/*/fotos/
+pruebas/*/mesa/
+pruebas/*/auditoria/
+pruebas/*/auditoria.json

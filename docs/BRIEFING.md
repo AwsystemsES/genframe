@@ -73,6 +73,8 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `docs/historia-autake/` | Documentos de la época de Autake: diseño original, estudio de recursos libres con licencias verificadas y briefing del motor automático. |
 | `docs/encargos/` | Encargos pendientes (el short de Normandía). |
 | `proyectos/` | Un directorio por vídeo (no se sube). |
+| `pruebas/` | Banco de pruebas del motor: proyectos mínimos (mar, multitud, efectos, textos) con su `referencia.jpg`; lo generado no se sube. |
+| `bin/pruebas.mjs` | Corredor de `npm test`. |
 
 ## 5. La herramienta (`node bin/genframe.mjs <comando>`)
 
@@ -87,7 +89,9 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `validar <nombre>` | Monta y lista los errores de ejecución por escena o pieza. |
 | `fotos <nombre> --en=1.2,3 \| --escena=<id> \| --todas` | Capturas con su `hoja.jpg`, marcando brillo medio, «dibujo» por tercios verticales, ⚠ OSCURA (brillo < 48), ⚠ CENTRO VACÍO (vertical) y ⚠ igual que otra captura. |
 | `audio <nombre>` | `sonido.json` (música de `plan.sonido.musica`, efectos atados a palabras y ambientes por escena) y `audio.py` → `mix.wav` a −14 LUFS. |
-| `render <nombre>` | Audio, montaje, validación y `hyperframes render` → `proyectos/<nombre>/<nombre>.mp4`. |
+| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo montado en el Chrome de HyperFrames con `puppeteer-core` y lista los problemas físicos y visuales. Deja `auditoria.json`; ver la skill. |
+| `render <nombre> [--forzar]` | Audio, montaje, validación, auditoría y `hyperframes render` → `proyectos/<nombre>/<nombre>.mp4`. Con problemas graves no renderiza. |
+| `npm test` | Banco de pruebas del motor (`pruebas/`): auditoría sin graves y fotos iguales a su referencia. |
 
 Formato de `plan.json`:
 ```json
@@ -230,7 +234,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
 
 ## 11. Estado y próximos pasos
 
-1. **Lo que hay:** genframe montado, independiente (trae su propio ffmpeg), subido y probado de punta a punta con una voz provisional de macOS (proyecto `prueba`, 6 s renderizados en unos 40 s). Falta la clave de ElevenLabs en el `.env`.
+1. **Lo que hay:** genframe montado, independiente (trae su propio ffmpeg), subido y probado de punta a punta, con la clave de ElevenLabs ya en el `.env`.
 2. **Primer encargo, hecho (17-10):** el short vertical del Día D está en `proyectos/normandia/normandia.mp4`.
    - Duración y coste: 75,8 s; voz real de ElevenLabs por ≈ 0,07 $; render en 156 s en el Mac.
    - Trabajo: 10 piezas revisadas en la mesa y 14 escenas revisadas con sus fotos.
@@ -239,11 +243,16 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
      - los cortes ya no se adelantan 0,55 s (`src/assemble.mjs`);
      - curva de volumen de la música atada a palabras: `musica.curva`;
      - `build` acepta palabras (`bin/genframe.mjs` y `src/audio.py`).
-3. **Generadores pendientes:** aviones, vehículos, edificios, vegetación, animales y personajes 2D.
-4. **Mejoras de la herramienta:**
+3. **Motor de calidad, para todos los vídeos (17-10, tras auditar el short):**
+   - **Física:** flotación con inercia; máscara de agua en cascos abiertos; mar de Gerstner con reflejo, espuma de flotación y estela; cámara que nunca entra en el agua ni queda tapada por una ola; separación automática de piezas que nacen solapadas; terreno seguido al moverse.
+   - **Herramientas nuevas:** `w.walk` (A*, sin pies que patinan), `w.formation`, `w.scatter`, `w.point`, `w.look`, `w.shake`; efectos con profundidad, anclables a piezas, más `fogonazo` y `columna`.
+   - **Textos y mapas:** títulos que se encogen solos para caber, mapas a sangre y `K.map.labels`.
+   - **Control:** comando `auditar` integrado en `render` y banco `npm test`.
+4. **Generadores pendientes:** aviones, vehículos, edificios, vegetación, animales y personajes 2D.
+5. **Mejoras de la herramienta:**
    - `fotos --escena` con zoom de detalle;
    - previsualización en GIF o vídeo corto de una escena;
    - caché de piezas entre proyectos;
    - plantilla de `plan.json` más completa;
    - `voz` con «request stitching» de ElevenLabs para guiones largos.
-5. **Cuando se aprenda algo** (una receta que funciona, un fallo frecuente), añadirlo a `SKILL.md` o a `referencia/`. La skill es la memoria del estudio.
+6. **Cuando se aprenda algo** (una receta que funciona, un fallo frecuente), añadirlo a `SKILL.md` o a `referencia/`. La skill es la memoria del estudio.

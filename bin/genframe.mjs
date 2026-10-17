@@ -47,7 +47,9 @@ const die = (msg) => { console.error('✖ ' + msg); process.exit(1); };
 /* ------------------------------------------------------------------ proyecto */
 function project(name) {
   if (!name) die('Falta el nombre del proyecto.');
-  const dir = path.join(PROJECTS, name);
+  // Un nombre es un proyecto de proyectos/; una ruta (con / o que empiece por .) es cualquier carpeta (p. ej. pruebas/mar).
+  const dir = /[\\/]/.test(name) || name.startsWith('.') ? path.resolve(name) : path.join(PROJECTS, name);
+  name = path.basename(dir);
   if (!fs.existsSync(dir)) die(`No existe el proyecto ${name} (crea uno con «genframe nuevo ${name}»).`);
   const read = (f, d = null) => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : d);
   const plan = JSON.parse(read('plan.json', '{}'));
@@ -217,6 +219,111 @@ async function voice(p, args) {
   console.log(`✔ voz.mp3 (${offset.toFixed(1)} s) y palabras.json (${words.length} palabras) · modelo ${model} · ${chars} caracteres ≈ ${(chars / 1000 * price).toFixed(2)} $`);
 }
 
+/* ------------------------------------------------------------------ auditoría */
+function findChrome() {
+  if (process.env.CHROME) return process.env.CHROME;
+  const base = path.join(process.env.HOME || '', '.cache/hyperframes/chrome');
+  const stack = [base];
+  while (stack.length) {
+    const d = stack.pop();
+    let list = [];
+    try { list = fs.readdirSync(d, {withFileTypes: true}); } catch { continue; }
+    for (const e of list) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) stack.push(f);
+      else if (/^chrome(-headless-shell)?(\.exe)?$/.test(e.name)) return f;
+    }
+  }
+  die('No encuentro el Chrome de HyperFrames: ejecuta «npx hyperframes browser ensure» o pon CHROME en el .env.');
+}
+
+/**
+ * Recorre el vídeo montado cada `paso` segundos en el Chrome de HyperFrames y junta:
+ *  - lo que dice el motor 3D (piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan…),
+ *  - lo que dicen los textos (cortados, fuera de la zona segura, en la franja de subtítulos, solapados),
+ *  - lo que dicen los píxeles (tramos casi quietos y fotogramas oscuros).
+ * Devuelve {graves, avisos, issues} y deja auditoria.json en el proyecto.
+ */
+async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
+  const puppeteer = req('puppeteer-core');
+  const fmtW = p.fmt === '9:16' ? 1080 : 1920, fmtH = p.fmt === '9:16' ? 1920 : 1080;
+  const browser = await puppeteer.launch({executablePath: findChrome(), headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : []), '--allow-file-access-from-files', '--autoplay-policy=no-user-gesture-required']});
+  const shots = path.join(p.dir, 'auditoria');
+  fs.rmSync(shots, {recursive: true, force: true}); fs.mkdirSync(shots, {recursive: true});
+  const issues = [];
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({width: fmtW, height: fmtH, deviceScaleFactor: 0.25});
+    const errs = [];
+    page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto('file://' + path.join(out, 'index.html'), {waitUntil: 'load', timeout: 120000});
+    await page.evaluate(() => (document.fonts ? document.fonts.ready.then(() => true) : true));
+    await page.evaluate(() => {
+      window.__gfSeek = (t) => {
+        document.querySelectorAll('#root > [data-start]').forEach((el) => { const a = +el.dataset.start, d = +(el.dataset.duration || 1e9); el.style.display = t >= a && t < a + d ? '' : 'none'; });
+        for (const tl of window.__hfAnime || []) tl.seek(t * 1000);
+        window.dispatchEvent(new CustomEvent('hf-seek', {detail: {time: t}}));
+      };
+    });
+    const dur = duration(p);
+    const times = [];
+    for (let t = 0; t < dur - 0.05; t += paso) times.push(r3(t));
+    for (const [i, t] of times.entries()) {
+      const found = await page.evaluate((tt) => {
+        __gfSeek(tt);
+        const res = [];
+        const top = [...document.querySelectorAll('#root > section.scene')].filter((s) => s.style.display !== 'none').map((s) => s.id.replace('sc-', ''));
+        for (const w of (window.K && K._worlds) || []) {
+          const sec = w.root.closest('section');
+          if (tt < w.T0 || tt > w.T1 || !sec || sec.style.display === 'none') continue;
+          try { for (const q of w.W.audit(tt)) res.push({...q, escena: sec.id.replace('sc-', '')}); } catch (e) { res.push({tipo: 'error', grave: true, texto: 'auditoría 3D: ' + e.message, escena: sec.id.replace('sc-', '')}); }
+        }
+        try { for (const q of K.auditDom()) res.push({...q, escena: top[top.length - 1] || '?'}); } catch (e) { res.push({tipo: 'error', grave: false, texto: 'auditoría de textos: ' + e.message, escena: '?'}); }
+        return res;
+      }, t);
+      for (const q of found) issues.push({...q, t});
+      await page.screenshot({path: path.join(shots, `f${String(i).padStart(5, '0')}.jpg`), type: 'jpeg', quality: 60});
+      if (!silencio && i % 40 === 0) process.stdout.write(`  auditando ${t.toFixed(1)} / ${dur.toFixed(1)} s\r`);
+    }
+    for (const e of errs) issues.push({tipo: 'error', grave: true, texto: 'error en la página: ' + e, t: 0, escena: '?'});
+  } finally { await browser.close(); }
+  // Píxeles: brillo de cada muestra y diferencia con la anterior.
+  const stats = path.join(shots, 'stats.txt');
+  const sc = p.fmt === '9:16' ? '270:480' : '480:270';
+  const seq = ['-v', 'error', '-framerate', String(1 / paso), '-i', path.join(shots, 'f%05d.jpg')];
+  try {
+    await run(FFMPEG, [...seq, '-vf', `scale=${sc},format=gray,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=${stats}.luma`, '-f', 'null', '-']);
+    await run(FFMPEG, [...seq, '-vf', `scale=${sc},format=gray,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=${stats}.diff`, '-f', 'null', '-']);
+  } catch (e) { console.warn('⚠ no se pudo medir el brillo y el movimiento: ' + e.message.split('\n')[0]); }
+  const vals = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.includes('YAVG')).map((l) => parseFloat(l.split('=')[1])) : []);
+  const luma = vals(stats + '.luma'), diff = vals(stats + '.diff');
+  const scenes = timedScenes(p), sceneAt = (t) => (scenes.filter((s) => s.start <= t + 1e-6).pop() || {id: '?'}).id;
+  const stillThr = 2.0 * Math.sqrt(paso / 0.5);
+  let run0 = null;
+  for (let i = 1; i <= diff.length; i++) {
+    const still = i < diff.length && diff[i] < stillThr && sceneAt((i - 1) * paso) === sceneAt(i * paso);
+    if (still && run0 === null) run0 = i - 1;
+    if (!still && run0 !== null) { if ((i - 1 - run0) * paso >= 2) issues.push({tipo: 'quieto', grave: false, texto: `${((i - 1 - run0) * paso).toFixed(1)} s casi quieto: añade movimiento (cámara, partículas, acción)`, t: r3(run0 * paso), escena: sceneAt(run0 * paso)}); run0 = null; }
+  }
+  luma.forEach((v, i) => { if (v < 40) issues.push({tipo: 'oscuro', grave: false, texto: `fotograma oscuro (brillo ${v.toFixed(0)}): sube la exposición o aclara la paleta`, t: r3(i * paso), escena: sceneAt(i * paso)}); });
+  // Agrupa lo repetido en tramos.
+  const groups = new Map();
+  for (const q of issues) { const k = q.escena + '|' + q.tipo + '|' + q.texto.replace(/\(\d+(\.\d+)? m\)/, '(…)'); if (!groups.has(k)) groups.set(k, {...q, desde: q.t, hasta: q.t, n: 0}); const g = groups.get(k); g.desde = Math.min(g.desde, q.t); g.hasta = Math.max(g.hasta, q.t); g.n++; g.grave = g.grave || q.grave; }
+  const list = [...groups.values()].sort((a, b) => a.desde - b.desde);
+  // Un choque o un problema de cámara de un solo instante suelto es grave igual; un aviso suelto de texto en una transición, no.
+  // Lo de un solo instante en los textos suele ser una transición (dos rótulos que se cruzan): no cuenta.
+  const kept = list.filter((g) => !(g.tipo === 'texto' && g.n === 1));
+  const graves = kept.filter((g) => g.grave), avisos = kept.filter((g) => !g.grave);
+  fs.writeFileSync(path.join(p.dir, 'auditoria.json'), JSON.stringify({paso, graves, avisos}, null, 1));
+  if (!silencio) {
+    process.stdout.write(' '.repeat(40) + '\r');
+    for (const g of graves) console.log(`✖ ${g.escena} ${g.desde.toFixed(2)}–${g.hasta.toFixed(2)} s · ${g.texto}`);
+    for (const g of avisos) console.log(`⚠ ${g.escena} ${g.desde.toFixed(2)}–${g.hasta.toFixed(2)} s · ${g.texto}`);
+    console.log(graves.length || avisos.length ? `auditoría: ${graves.length} graves, ${avisos.length} avisos (auditoria.json; fotos en auditoria/)` : '✔ auditoría sin problemas');
+  }
+  return {graves, avisos};
+}
+
 /* ------------------------------------------------------------------ comandos */
 const COMMANDS = {
   async nuevo([name, fmt]) {
@@ -325,6 +432,17 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     await run(FFMPEG, ['-v', 'error', '-y', ...shots.flatMap((f) => ['-i', f]), ...layout, '-frames:v', '1', '-q:v', '3', path.join(dir, 'vistas.jpg')]);
     console.log('vistas: ' + path.join(dir, 'vistas.jpg') + (piece.kind === '2d' ? ' (reposo · primera acción)' : ' (frente · tres cuartos · lado · atrás y arriba con su primera acción)'));
   },
+  /** Auditoría física y visual del vídeo entero (--paso=0.25 por defecto). */
+  async auditar([name, ...rest]) {
+    const p = project(name);
+    const args = opts(rest);
+    const out = await COMMANDS.montar([name]);
+    const errors = await validate(out);
+    for (const e of errors) console.log('✖ ' + (e.text || JSON.stringify(e)));
+    const res = await auditProject(p, out, {paso: Number(args.paso) || 0.25});
+    if (res.graves.length) process.exitCode = 1;
+    return res;
+  },
   async audio([name]) {
     const p = project(name);
     if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Falta voz.mp3 («genframe voz»).');
@@ -346,13 +464,19 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     const {stdout} = await run(PYTHON, [path.join(ROOT, 'src/audio.py'), path.join(p.dir, 'sonido.json'), path.join(p.dir, 'mix.wav')], {maxBuffer: 1 << 24, env: {...process.env, FFMPEG}});
     console.log('✔ mix.wav · ' + stdout.trim());
   },
-  async render([name]) {
+  async render([name, ...rest]) {
     const p = project(name);
+    const args = opts(rest);
     const started = Date.now();
     await COMMANDS.audio([name]);
     const out = await COMMANDS.montar([name]);
     const errors = await validate(out);
     for (const e of errors) console.log('✖ ' + (e.text || JSON.stringify(e)));
+    // Antes de renderizar, la auditoría: con problemas graves no se renderiza (salvo --forzar).
+    if (!args['sin-auditar']) {
+      const res = await auditProject(p, out, {paso: Number(args.paso) || 0.5});
+      if (res.graves.length && !args.forzar) die(`La auditoría encuentra ${res.graves.length} problemas graves: arréglalos o renderiza con --forzar.`);
+    }
     const mp4 = path.join(p.dir, name + '.mp4');
     await run(HF, ['render', '--output', mp4, out], {cwd: out, maxBuffer: 1 << 28});
     console.log(`✔ ${mp4} · ${duration(p)} s de vídeo en ${((Date.now() - started) / 1000).toFixed(0)} s`);
@@ -371,7 +495,8 @@ if (!COMMANDS[cmd]) {
   validar <nombre>             monta el proyecto y lista los errores
   fotos <nombre> --en=1.2,3 | --escena=<id> | --todas   capturas para revisar (con brillo, vacío y repetidos)
   audio <nombre>               música, efectos y mezcla a -14 LUFS
-  render <nombre>              audio + montaje + MP4 final`);
+  auditar <nombre> [--paso=0.25]   auditoría física y visual: choques, cámara, textos, tramos quietos y oscuros
+  render <nombre> [--forzar] [--sin-auditar]   audio + montaje + auditoría + MP4 final`);
   process.exit(cmd ? 1 : 0);
 }
 await COMMANDS[cmd](rest);

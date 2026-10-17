@@ -31,9 +31,12 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 | `palabras <nombre> [desde] [hasta]` | Palabras con su instante, para sincronizar con `K.cue`. |
 | `mesa <nombre> <pieza>` | Fotografía una pieza en un estudio neutro: 4 vistas y su medida real (10 unidades = 1 m). |
 | `validar <nombre>` | Monta el proyecto y lista los errores de ejecución por escena. |
+| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, tramos de más de 2 s casi quietos y fotogramas oscuros. Deja `auditoria.json`. |
 | `fotos <nombre> --escena=<id> \| --todas \| --en=1.2,3` | Capturas para revisar; marca las oscuras, las de centro vacío y las repetidas. Deja `hoja.jpg`. |
 | `audio <nombre>` | Música compuesta, efectos y ambientes atados a palabras, mezcla a −14 LUFS. |
-| `render <nombre>` | Audio + montaje + MP4 final en `proyectos/<nombre>/<nombre>.mp4`. |
+| `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). |
+
+Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `auditar pruebas/mar`).
 
 ## Flujo de trabajo (en este orden, sin saltarte la revisión)
 
@@ -57,7 +60,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
    - **Bucle por pieza:** escribe `piezas/<id>.js`, ejecuta `mesa`, MIRA `vistas.jpg` y corrige hasta que se reconozca a la primera, tenga proporciones creíbles (la barra gris mide 1,8 m), detalle a varias escalas y nada flotando ni atravesado.
 6. **Escenas.** Escribe `escenas/<id>.js` siguiendo `referencia/kit.md`. Sincroniza con `K.cue('palabra')`. En 3D encuadra con `w.frame` y haz flotar los barcos con `w.float`. En vertical, el protagonista va en el centro, los titulares arriba y abajo queda libre para los subtítulos.
 7. **Revisión, escena a escena.** Ejecuta `validar` y arregla todos los errores. Luego `fotos --escena=<id>` y MIRA las imágenes con la rúbrica de abajo. Si no llega a un 8, reescríbela; si tras dos intentos sigue floja, replantéala con otro recurso.
-8. **Revisión del conjunto.** `fotos --todas` y mira `hoja.jpg`: coherencia de estilo, variedad, ritmo, que cada escena cuente su parte y que no haya planos repetidos ni oscuros. Corrige lo que baje el vídeo.
+8. **Revisión del conjunto.** `auditar` y arregla todo lo grave y los avisos que se vean. Después `fotos --todas` y mira `hoja.jpg`: coherencia de estilo, variedad, ritmo, que cada escena cuente su parte y que no haya planos repetidos ni oscuros. Corrige lo que baje el vídeo.
 9. **Sonido.** En `plan.json` → `sonido`:
    - `musica`: `{engine: 'orquesta', key, mode, bpm, lead: 'harp'|'piano'|'strings', gain}`, o `{engine: 'sintetizador', style: 'urbano'|'synthwave'|'curioso'}`, o `{engine: 'ninguna'}`.
    - Efectos y ambientes, en cada escena.
@@ -76,6 +79,16 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 7. **Acabado:** nada de cajas toscas, piezas flotando, textos cortados o solapados, ni nada que tape la franja de subtítulos.
 
 Un 5-6 es «correcto pero pobre». Un 8 es «lo publicaría un canal grande». No entregues nada por debajo de 8 sin decirlo.
+
+## Mejorar el motor (para todos los vídeos)
+
+Cada fallo que aparezca en un vídeo se arregla, si se puede, en el motor (`src/kit/*.js`, `bin/genframe.mjs`) y no en la escena, y entra en el banco de pruebas:
+1. Arreglo en el motor, genérico, sin nada de un vídeo concreto.
+2. Un caso en `pruebas/<caso>/` que lo reproduzca (si ninguno lo cubre).
+3. Una comprobación en `auditar` si se puede detectar sola.
+4. `npm test`: todas las pruebas sin graves y con sus fotos como la referencia. Si un cambio visual es bueno, se miran las fotos y se fija con `npm test -- --actualizar`.
+
+A la skill solo va el criterio (encuadre, ritmo, estilo); todo lo que se pueda resolver con código va al motor.
 
 ## Recetas y fallos aprendidos
 
