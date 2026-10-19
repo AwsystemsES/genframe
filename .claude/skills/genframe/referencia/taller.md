@@ -23,7 +23,10 @@ Escribes el CUERPO de `function (f, p) { … }` y devuelves un `THREE.Object3D` 
 |---|---|
 | `f.T` | Three.js completo (`f.T.Group`, `f.T.Shape`, `f.T.Vector3`, geometrías, materiales…). |
 | `f.group()` | Grupo vacío. |
-| `f.box(w, h, d, color, y?, o?)` | Caja. `y` es la altura de su CENTRO (por defecto h/2: apoyada en el suelo). `o`: `{outline, cast, extra}`. |
+| `f.box(w, h, d, color, y?, o?)` | Caja. `y` es la altura de su CENTRO (por defecto h/2: apoyada en el suelo). `o`: `{outline, cast, extra, acabado, desgaste, escala}`. |
+| `f.rbox(w, h, d, color, y?, {radio, seg, …o})` | Caja de aristas y esquinas redondeadas (carrocerías, electrodomésticos, muebles, cascos de máquinas). `radio` por defecto, el 15 % del lado menor. |
+| `f.rcyl(r, h, color, y?, {radio, seg, …o})` | Cilindro de cantos redondeados (depósitos, botes, pilotes, bidones, botones). `y` = base. |
+| `f.capsula(r, largo, color, y?, o?)` | Cápsula vertical (bolardos, extremidades, tubos con tapa, depósitos de gas). |
 | `f.cyl(rArriba, rAbajo, h, color, segmentos?, y?, o?)` | Cilindro o tronco de cono, vertical; `y` = altura del centro (por defecto h/2). |
 | `f.cone(r, h, color, segmentos?, y?, o?)` · `f.sphere(r, color, y?, o?)` | Cono y esfera (`y` = centro; la esfera por defecto apoyada). Cada pieza es un grupo: gíralo o escálalo entero. |
 | `f.lathe([[radio, y], …], color, {seg})` | Pieza de revolución a partir de su perfil (botellas, cúpulas, columnas, jarrones, cabezas, fuselajes). |
@@ -33,7 +36,10 @@ Escribes el CUERPO de `function (f, p) { … }` y devuelves un `THREE.Object3D` 
 | `f.mat(color, extra)` | Material del aspecto del vídeo (cómic, videojuego o limpio). |
 | `f.at(obj, x, y, z, giroY)` | Coloca una pieza. |
 | `f.pivot(padre, 'nombre', x, y, z)` | Articulación con nombre: un grupo en el punto de giro. Lo que cuelgues de él gira con él. |
-| `f.canvasTexture(ancho, alto, (ctx, w, h) => {…})` | Textura pintada por código (rótulos, ventanas iluminadas, vetas, azulejos, paneles). Úsala con `f.T.MeshBasicMaterial({map})` o en `extra: {map}`. |
+| `f.letrero(texto, {ancho, alto, fondo, color, fuente, peso, margen, lineas, alinear, borde, caras, luz, brillo, minimo})` | Rótulo plano que SIEMPRE cabe: reparte el texto en líneas (`lineas`, o `\n` explícito) y busca el tamaño mayor que entra con su margen. `luz: true` para pantallas y letreros luminosos (no les afecta la luz), `brillo` para que se encienda de noche, `caras: 2` para carteles de doble cara. Si la letra queda por debajo de `minimo` (1 = 10 cm), la mesa y el auditor avisan. |
+| `f.letreroTex(texto, opts)` | Lo mismo, pero devuelve `{map, letra, aviso}` para ponerlo en otra superficie (pantalla de un surtidor, lateral de un camión). |
+| `f.canvasTexture(ancho, alto, (ctx, w, h) => {…})` | Textura pintada por código (ventanas iluminadas, dibujos, paneles). Para texto, usa SIEMPRE `f.letrero`: un texto pintado a mano en un canvas se corta con facilidad. |
+| `f.acabado(color, nombre, {desgaste, extra})` · `f.uv(geometría, escala)` | Material con acabado para mallas propias (`f.mesh` o `f.T.Mesh`), y proyección de coordenadas de textura a escala real. |
 | `f.palette()` | Paleta del vídeo `{bg, ink, accent, accent2, soft}`. |
 
 ### Generadores de base (úsalos SIEMPRE que la pieza sea una persona o un barco)
@@ -80,8 +86,25 @@ Lo que ya traen los generadores (no lo rehagas en la pieza):
 - Animales: estudia la silueta lateral (lomo, cuello, patas con articulaciones en su sitio) y constrúyela con `lathe`, `extrude` y cápsulas.
 - Postura de reposo natural: brazos ligeramente separados del cuerpo, peso repartido, cabeza recta.
 
+### Acabados: textura y relieve del material
+
+Cualquier forma (`box`, `rbox`, `cyl`, `rcyl`, `capsula`, `sphere`, `lathe`, `extrude`, `tube`, `mesh`) acepta `acabado`, `desgaste` (0-1, por defecto 0.3) y `escala` (unidades por baldosa de textura):
+`f.rbox(40, 12, 18, '#b8322a', 6, {acabado: 'pintura', desgaste: 0.2})`. El color sigue siendo el de la paleta; el acabado le añade el detalle del material y su relieve, a escala real (el mismo tamaño de veta o de ladrillo en una pieza pequeña que en una grande).
+
+| Acabado | Para |
+|---|---|
+| `pintura` | carrocerías, chapa pintada, señales, maquinaria |
+| `metal` (cepillado) · `cromo` · `oxido` | acero, aluminio, tuberías · parachoques, llantas, grifería · hierro viejo, barcos, vagones |
+| `hormigon` · `asfalto` · `ladrillo` · `azulejo` | losas, muros, pilares · calzadas, aparcamientos · fachadas · suelos y paredes de interior |
+| `madera` · `plastico` · `tela` · `goma` | muebles, palés, tablas · envases, carcasas, mostradores · toldos, asientos, ropa · neumáticos, mangueras, juntas |
+| `cristal` | lunas, escaparates, vitrinas (reflejo pintado) |
+
+Cada pieza lleva al menos dos o tres acabados distintos (chapa + cristal + goma; hormigón + metal + plástico). Lo que es luz (faros, pantallas, rótulos luminosos) no lleva acabado: va con `emissive` o `f.letrero({luz: true})`.
+
 Recursos que dan calidad:
-- Volúmenes redondeados con `lathe` y `extrude` con `bevel` en vez de cajas desnudas.
+- Formas redondeadas (`rbox`, `rcyl`, `capsula`, `lathe`, `extrude` con `bevel`) en vez de cajas desnudas: casi nada real tiene aristas vivas.
+- Acabados en todas las superficies grandes: una superficie lisa de un solo color es lo que más delata un modelo pobre.
+- Textos con `f.letrero`: nunca un rótulo cortado.
 - Repetición con variación (ventanas, tejas, remaches, árboles de un bosque) con bucles y `f.rand`.
 - Contraste de materiales: dos o tres tonos de la paleta, uno oscuro para huecos y sombras, uno claro para remates; `emissive` para luces y pantallas.
 - Proporciones medidas: escribe las medidas reales en variables y construye a partir de ellas.

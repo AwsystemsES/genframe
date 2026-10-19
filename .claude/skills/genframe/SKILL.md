@@ -53,7 +53,7 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
 4. **Guion visual.** En `plan.json` → `escenas`, una por cada 4-12 s de voz:
    `{id, frases: [desde, hasta], transicion: 'corte'|'fundido'|'deslizar'|'pagina'|'zoom'|'cortina'|'desenfoque', sfx: [{nombre, palabra}], ambiente}`.
    Cubre todas las frases, en orden y sin huecos. Decide para cada escena qué se ve (3D o 2D), con qué piezas, cámara y qué pasa en cada palabra clave. Varía los recursos entre escenas seguidas.
-5. **Reparto.** Haz la lista de piezas: personas, vehículos, edificios, objetos y animales. Pocas, muy ricas y reutilizables.
+5. **Reparto.** Haz la lista de piezas: personas, vehículos, edificios, objetos y animales. Pocas, muy ricas y reutilizables. Fabrícalas con formas redondeadas (`f.rbox`, `f.rcyl`, `f.capsula`), acabados con textura en las superficies grandes (`acabado: 'pintura'|'metal'|'hormigon'|…`) y todos los textos con `f.letrero` (nunca se cortan). En la mesa, un aviso de «rótulo demasiado pequeño» se corrige antes de seguir.
    - **Personas** con `f.gen.human`; **barcos** con `f.gen.hull`. Lo demás, con las herramientas de `f`.
    - **Mar, costa y nubes** no son piezas: los pone el escenario (`ocean`, `terrain`, `clouds`).
    - **Mapas y geografía**, siempre los mapas reales (`K.map`, mapa extruido), nunca dibujados a mano.

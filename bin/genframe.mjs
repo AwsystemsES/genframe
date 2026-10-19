@@ -414,7 +414,8 @@ w.shot(0.5, {x: c.x, z: c.z}, {dist: d, pitch: 26, yaw: 42, h: c.y, dur: 0.02});
 w.shot(1.0, {x: c.x, z: c.z}, {dist: d, pitch: 8, yaw: 90, h: c.y, dur: 0.02});
 w.shot(1.5, {x: c.x, z: c.z}, {dist: d, pitch: 48, yaw: -140, h: c.y, dur: 0.02});
 const acts = Object.keys(o.userData.actions || {});
-if (acts[0]) w.act(o, acts[0], 1.5, 2.1);`;
+if (acts[0]) w.act(o, acts[0], 1.5, 2.1);
+const avisos = new Set(); o.traverse((n) => { if (n.userData && n.userData.letreroAviso) avisos.add(n.userData.letreroAviso); }); for (const a of avisos) console.error('AVISO ' + a);`;
     const code2d = `const f = K.figure(${JSON.stringify(id)}, root, K.W / 2, K.H - 60, {size: K.H - 140});
 if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     const dir = path.join(p.dir, 'mesa', id);
@@ -423,7 +424,9 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
       scenes: [{id: 'mesa', start: 0, end: 2, transition: 'corte', text: '', code: piece.kind === '2d' ? code2d : code3d}]}, out);
     const found = (await validate(out)).map((e) => String(e.text || '').replace(/^Escena mesa: /, ''));
     const measure = found.find((e) => /MEDIDA /.test(e));
-    const errors = found.filter((e) => e !== measure);
+    const avisosMesa = found.filter((e) => /^AVISO /.test(e));
+    for (const a of avisosMesa) console.log('⚠ ' + a.replace(/^AVISO /, ''));
+    const errors = found.filter((e) => e !== measure && !/^AVISO /.test(e));
     if (errors.length) { for (const e of errors) console.log('✖ ' + e); process.exitCode = 1; return; }
     if (measure) { const [w, h, d, base] = measure.replace(/^.*MEDIDA /, '').split(' '); console.log(`medida: ${w} × ${h} × ${d} unidades (ancho × alto × fondo; 10 = 1 m) · base en y = ${base}`); }
     const times = piece.kind === '2d' ? [0.5, 1.6] : [0.3, 0.8, 1.3, 1.85];

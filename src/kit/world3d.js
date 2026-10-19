@@ -46,9 +46,11 @@
   };
   const OUTLINE = new T.MeshBasicMaterial({color: 0x0b0b12, side: T.BackSide});
   const EDGE = new T.LineBasicMaterial({color: 0x15121c});
-  const mesh = (geo, color, {outline = 0.06, cast = true, extra = {}} = {}) => {
+  const mesh = (geo, color, {outline = 0.06, cast = true, extra = {}, acabado = null, desgaste = 0.3, escala = null} = {}) => {
     const g = new T.Group();
-    const m = new T.Mesh(geo, toon(color, extra));
+    // Con acabado, coordenadas de textura a escala real y material con textura y relieve (ver «acabados»).
+    if (acabado && ACABADOS[acabado]) projectUV(geo, escala ?? ACABADOS[acabado].escala);
+    const m = new T.Mesh(geo, acabado && ACABADOS[acabado] ? finishMat(color, acabado, {desgaste, extra}) : toon(color, extra));
     m.castShadow = cast; m.receiveShadow = true;
     g.add(m);
     if (outline && LOOK === 'comic') {
@@ -64,29 +66,148 @@
   const sphere = (r, color, y = r, o) => { const m = mesh(new T.SphereGeometry(r, 12, 8), color, o); m.position.y = y; return m; };
   const at = (obj, x, y, z, ry = 0) => { obj.position.set(x, y, z); obj.rotation.y = ry; return obj; };
 
-  const lathe = (profile, color, {seg = 24, o} = {}) => mesh(new T.LatheGeometry(profile.map(([r, y]) => new T.Vector2(r, y)), seg), color, o);
-  const extrude = (points, depth, color, {holes = [], bevel = 0, curveSegments = 8, o} = {}) => {
+  const lathe = (profile, color, {seg = 24, o, ...rest} = {}) => mesh(new T.LatheGeometry(profile.map(([r, y]) => new T.Vector2(r, y)), seg), color, {...rest, ...o});
+  const extrude = (points, depth, color, {holes = [], bevel = 0, curveSegments = 8, o, ...rest} = {}) => {
+    o = {...rest, ...o};
     const shape = new T.Shape(points.map(([x, y]) => new T.Vector2(x, y)));
     for (const h of holes) shape.holes.push(new T.Path(h.map(([x, y]) => new T.Vector2(x, y))));
     const geo = new T.ExtrudeGeometry(shape, {depth, curveSegments, bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 2});
     geo.translate(0, 0, -depth / 2);
     return mesh(geo, color, o);
   };
-  const tube = (points, radius, color, {seg = 32, radial = 8, closed = false, o} = {}) => mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points.map(([x, y, z]) => new T.Vector3(x, y, z)), closed), seg, radius, radial, closed), color, o);
+  const tube = (points, radius, color, {seg = 32, radial = 8, closed = false, o, ...rest} = {}) => mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points.map(([x, y, z]) => new T.Vector3(x, y, z)), closed), seg, radius, radial, closed), color, {...rest, ...o});
   const canvasTexture = (w, h, draw) => {
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     draw(c.getContext('2d'), w, h);
     const tx = new T.CanvasTexture(c); tx.colorSpace = T.SRGBColorSpace; tx.wrapS = tx.wrapT = T.RepeatWrapping; tx.anisotropy = 4;
     return tx;
   };
+  const rbox = (w, h, d, color, y = h / 2, o = {}) => { const m = mesh(roundedBoxGeo(w, h, d, o.radio ?? Math.min(w, h, d) * 0.15, o.seg ?? 3), color, o); m.position.y = y; return m; };
+  const rcyl = (r, h, color, y = 0, o = {}) => { const m = mesh(new T.LatheGeometry(roundedCylProfile(r, h, o.radio ?? Math.min(r, h) * 0.2).map(([a, b]) => new T.Vector2(a, b)), o.seg ?? 24), color, o); m.position.y = y; return m; };
+  const capsula = (r, largo, color, y = largo / 2 + r, o = {}) => { const m = mesh(new T.CapsuleGeometry(r, largo, 6, o.seg ?? 14), color, o); m.position.y = y; return m; };
   const pivot = (parent, name, x = 0, y = 0, z = 0) => { const g = new T.Group(); g.name = name; g.position.set(x, y, z); parent.add(g); return g; };
+
+  /* ---------------------------------------------------------------- acabados
+   * Texturas de material procedurales a escala real: el color de la pieza sigue mandando (la textura es casi blanca y lo
+   * multiplica), y encima añade el detalle del material (vetas, poros, juntas, desgaste) y su relieve. Las coordenadas de
+   * textura se proyectan por caras según el tamaño real (`escala` = unidades que ocupa una baldosa de textura), así el
+   * detalle tiene el mismo tamaño en una pieza pequeña que en una grande. */
+  const ACABADOS = {
+    pintura: {escala: 40, bump: 0.25, rough: 0.45, metal: 0.1}, metal: {escala: 30, bump: 0.2, rough: 0.35, metal: 0.6},
+    cromo: {escala: 25, bump: 0.05, rough: 0.12, metal: 0.95}, oxido: {escala: 50, bump: 0.6, rough: 0.85, metal: 0.3},
+    hormigon: {escala: 60, bump: 0.8, rough: 0.9, metal: 0}, asfalto: {escala: 50, bump: 0.7, rough: 0.95, metal: 0},
+    madera: {escala: 30, bump: 0.5, rough: 0.7, metal: 0}, ladrillo: {escala: 24, bump: 1.2, rough: 0.9, metal: 0},
+    plastico: {escala: 40, bump: 0.1, rough: 0.4, metal: 0}, cristal: {escala: 0, bump: 0, rough: 0.08, metal: 0.2},
+    tela: {escala: 8, bump: 0.4, rough: 0.95, metal: 0}, goma: {escala: 10, bump: 0.3, rough: 0.9, metal: 0},
+    azulejo: {escala: 20, bump: 0.6, rough: 0.3, metal: 0},
+  };
+  const finishTex = {};
+  const finishTexture = (nombre, desgaste) => {
+    const key = nombre + '|' + Math.round(desgaste * 10);
+    if (finishTex[key]) return finishTex[key];
+    const r = K.rand(nombre.length * 97 + Math.round(desgaste * 10)), N = 256, wear = desgaste;
+    const c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+    const gray = (v, a = 1) => `rgba(${v},${v},${v},${a})`;
+    const speck = (n, lo, hi, s0, s1, a = 1) => { for (let i = 0; i < n; i++) { x.fillStyle = gray(Math.round(lo + r() * (hi - lo)), a); const s = s0 + r() * (s1 - s0); x.fillRect(r() * N, r() * N, s, s); } };
+    const blot = (n, col, rad0, rad1, a) => { for (let i = 0; i < n; i++) { const cx = r() * N, cy = r() * N, rad = rad0 + r() * (rad1 - rad0); for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) { const g = x.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, rad); g.addColorStop(0, col.replace('A', a)); g.addColorStop(1, col.replace('A', 0)); x.fillStyle = g; x.fillRect(cx + ox - rad, cy + oy - rad, rad * 2, rad * 2); } } };
+    x.fillStyle = gray(246); x.fillRect(0, 0, N, N);
+    if (nombre === 'pintura') { speck(2200, 228, 255, 1, 2); blot(6 + wear * 10, 'rgba(120,110,95,A)', 20, 60, 0.05 + wear * 0.12); speck(Math.round(wear * 160), 90, 140, 1, 3); for (let i = 0; i < wear * 30; i++) { x.fillStyle = gray(200, 0.25); x.fillRect(r() * N, r() * N * 0.5, 1, 30 + r() * 80); } }
+    else if (nombre === 'metal') { for (let y = 0; y < N; y++) { x.fillStyle = gray(Math.round(225 + r() * 30), 0.9); x.fillRect(0, y, N, 1); } blot(4 + wear * 8, 'rgba(90,85,80,A)', 20, 50, 0.04 + wear * 0.1); }
+    else if (nombre === 'cromo') { const g = x.createLinearGradient(0, 0, 0, N); [[0, 255], [0.3, 200], [0.42, 255], [0.55, 165], [0.8, 235], [1, 255]].forEach(([p, v]) => g.addColorStop(p, gray(v))); x.fillStyle = g; x.fillRect(0, 0, N, N); for (let y = 0; y < N; y++) { x.fillStyle = gray(255, r() * 0.08); x.fillRect(0, y, N, 1); } }
+    else if (nombre === 'oxido') { speck(3000, 200, 255, 1, 3); blot(18 + wear * 20, 'rgba(150,72,32,A)', 12, 48, 0.35 + wear * 0.3); blot(10, 'rgba(90,45,25,A)', 6, 20, 0.4); speck(400, 110, 150, 1, 2, 0.6); }
+    else if (nombre === 'hormigon') { speck(5000, 205, 255, 1, 3); speck(500, 120, 170, 1, 2); blot(10 + wear * 14, 'rgba(110,105,95,A)', 25, 70, 0.08 + wear * 0.14); x.fillStyle = gray(180, 0.5); x.fillRect(0, 0, N, 2); x.fillRect(0, 0, 2, N); }
+    else if (nombre === 'asfalto') { x.fillStyle = gray(200); x.fillRect(0, 0, N, N); speck(9000, 140, 255, 1, 2); x.strokeStyle = gray(90, 0.5 + wear * 0.4); x.lineWidth = 1.2; for (let i = 0; i < 3 + wear * 8; i++) { let px = r() * N, py = r() * N; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 8; k++) { px += (r() - 0.5) * 30; py += (r() - 0.5) * 30; x.lineTo(px, py); } x.stroke(); } }
+    else if (nombre === 'madera') { for (let y = 0; y < N; y++) { const v = 215 + 30 * Math.sin(y * 0.35 + Math.sin(y * 0.05) * 4) * Math.sin(y * 0.11); x.fillStyle = gray(Math.round(v)); x.fillRect(0, y, N, 1); } for (let k = 0; k < N; k += 64) { x.fillStyle = gray(120, 0.7); x.fillRect(k, 0, 2, N); } speck(60, 140, 180, 3, 6, 0.5); }
+    else if (nombre === 'ladrillo') { x.fillStyle = gray(232); x.fillRect(0, 0, N, N); const bh = 32, bw = 64; for (let row = 0; row < N / bh; row++) for (let col = -1; col < N / bw + 1; col++) { const ox = (row % 2) * bw / 2; const v = Math.round(185 + r() * 55); x.fillStyle = gray(v); x.fillRect(col * bw + ox + 3, row * bh + 3, bw - 6, bh - 6); } speck(1500, 150, 255, 1, 2, 0.5); blot(wear * 12, 'rgba(70,60,50,A)', 20, 50, 0.12); }
+    else if (nombre === 'plastico') { speck(1200, 238, 255, 1, 2); blot(wear * 8, 'rgba(120,120,120,A)', 20, 50, 0.08); }
+    else if (nombre === 'cristal') { const g = x.createLinearGradient(0, 0, N, N); [[0, 255], [0.35, 210], [0.45, 255], [0.52, 225], [1, 170]].forEach(([p, v]) => g.addColorStop(p, gray(v))); x.fillStyle = g; x.fillRect(0, 0, N, N); x.fillStyle = gray(255, 0.35); x.beginPath(); x.moveTo(N * 0.15, 0); x.lineTo(N * 0.35, 0); x.lineTo(N * 0.05, N); x.lineTo(-N * 0.15, N); x.fill(); }
+    else if (nombre === 'tela') { for (let y = 0; y < N; y += 4) for (let xx = 0; xx < N; xx += 4) { x.fillStyle = gray(((xx + y) / 4) % 2 ? 225 : 250); x.fillRect(xx, y, 4, 4); } speck(800, 200, 255, 1, 2, 0.5); }
+    else if (nombre === 'goma') { x.fillStyle = gray(225); x.fillRect(0, 0, N, N); for (let y = 0; y < N; y += 16) { x.fillStyle = gray(170); x.fillRect(0, y, N, 5); } speck(1500, 190, 245, 1, 2); }
+    else if (nombre === 'azulejo') { x.fillStyle = gray(200); x.fillRect(0, 0, N, N); for (let yy = 0; yy < 4; yy++) for (let xx = 0; xx < 4; xx++) { x.fillStyle = gray(Math.round(238 + r() * 17)); x.fillRect(xx * 64 + 3, yy * 64 + 3, 58, 58); } blot(wear * 10, 'rgba(110,100,80,A)', 15, 40, 0.1); }
+    const map = new T.CanvasTexture(c); map.colorSpace = T.SRGBColorSpace; map.wrapS = map.wrapT = T.RepeatWrapping; map.anisotropy = 4;
+    const bump = new T.CanvasTexture(c); bump.wrapS = bump.wrapT = T.RepeatWrapping;
+    return (finishTex[key] = {map, bump});
+  };
+  /** Proyecta coordenadas de textura por caras (la del eje dominante de la normal), a `escala` unidades por baldosa. */
+  const projectUV = (geo, escala) => {
+    if (!escala) return geo;
+    const pos = geo.attributes.position, nrm = geo.attributes.normal || (geo.computeVertexNormals(), geo.attributes.normal);
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      const ax = Math.abs(nrm.getX(i)), ay = Math.abs(nrm.getY(i)), az = Math.abs(nrm.getZ(i)), px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+      const [u, v] = ax >= ay && ax >= az ? [pz, py] : ay >= az ? [px, pz] : [px, py];
+      uv[i * 2] = u / escala; uv[i * 2 + 1] = v / escala;
+    }
+    geo.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    return geo;
+  };
+  /** Material con acabado: color del vídeo + textura del material + relieve, en el aspecto del vídeo (cómic, videojuego o limpio). */
+  const finishMat = (color, nombre, {desgaste = 0.3, extra = {}} = {}) => {
+    const A = ACABADOS[nombre]; if (!A) return toon(color, extra);
+    const key = 'acab|' + LOOK + color + nombre + Math.round(desgaste * 10) + JSON.stringify(extra);
+    if (matCache[key]) return matCache[key];
+    const {map, bump} = finishTexture(nombre, desgaste);
+    const base = {color: new T.Color(color), map, bumpMap: bump, bumpScale: A.bump, ...extra};
+    return (matCache[key] = LOOK === 'clean' ? new T.MeshStandardMaterial({...base, roughness: A.rough, metalness: A.metal}) : LOOK === 'sa' ? new T.MeshLambertMaterial(base) : new T.MeshToonMaterial({...base, gradientMap: toonRamp}));
+  };
+
+  /* ---------------------------------------------------------------- formas redondeadas */
+  /** Geometría de caja con aristas y esquinas redondeadas (radio en unidades). */
+  const roundedBoxGeo = (w, h, d, radio, seg = 3) => {
+    const s = seg * 2 + 1, rad = Math.min(radio, w / 2 - 0.01, h / 2 - 0.01, d / 2 - 0.01);
+    const geo = new T.BoxGeometry(1, 1, 1, s, s, s).toNonIndexed();
+    const pos = geo.attributes.position.array, nor = geo.attributes.normal.array, half = new T.Vector3(w / 2 - rad, h / 2 - rad, d / 2 - rad), hs = 0.5 / s, p = new T.Vector3(), n = new T.Vector3();
+    for (let i = 0; i < pos.length; i += 3) {
+      p.fromArray(pos, i); n.copy(p); n.x -= Math.sign(n.x) * hs; n.y -= Math.sign(n.y) * hs; n.z -= Math.sign(n.z) * hs; n.normalize();
+      pos[i] = half.x * Math.sign(p.x) + n.x * rad; pos[i + 1] = half.y * Math.sign(p.y) + n.y * rad; pos[i + 2] = half.z * Math.sign(p.z) + n.z * rad;
+      nor[i] = n.x; nor[i + 1] = n.y; nor[i + 2] = n.z;
+    }
+    geo.attributes.position.needsUpdate = geo.attributes.normal.needsUpdate = true;
+    return geo;
+  };
+  /** Perfil de un cilindro de cantos redondeados (para lathe). */
+  const roundedCylProfile = (r, h, rr, seg = 5) => { rr = Math.min(rr, r - 0.01, h / 2 - 0.01); const pts = [[0, 0], [r - rr, 0]]; for (let i = 1; i <= seg; i++) { const a = -Math.PI / 2 + (i / seg) * (Math.PI / 2); pts.push([r - rr + Math.cos(a) * rr, rr + Math.sin(a) * rr]); } for (let i = 0; i <= seg; i++) { const a = (i / seg) * (Math.PI / 2); pts.push([r - rr + Math.cos(a) * rr, h - rr + Math.sin(a) * rr]); } pts.push([0, h]); return pts; };
+
+  /* ---------------------------------------------------------------- rótulos */
+  /**
+   * Rótulo que siempre cabe: el texto se reparte en líneas (hasta `lineas`) y se ajusta al tamaño mayor que entra con su
+   * margen, sin cortarse nunca. Si para caber tiene que quedar más bajo que `minimo` (unidades de alto de letra; 3 = 30 cm),
+   * lo marca en userData.letreroAviso (la mesa y el auditor lo avisan): acorta el texto o agranda el cartel.
+   */
+  const letreroTexture = (texto, {ancho = 40, alto = 10, fondo = '#1c2e45', color = '#ffffff', fuente = 'Inter, Helvetica, Arial, sans-serif', peso = 800, margen = 0.1, lineas = 2, borde = null, interlinea = 1.12, alinear = 'center', minimo = 1} = {}) => {
+    const pxu = Math.min(32, 2048 / Math.max(ancho, alto)), W = Math.max(8, Math.round(ancho * pxu)), H = Math.max(8, Math.round(alto * pxu));
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    if (fondo) { x.fillStyle = fondo; x.fillRect(0, 0, W, H); }
+    if (borde) { x.strokeStyle = borde; x.lineWidth = Math.max(2, H * 0.05); x.strokeRect(x.lineWidth / 2, x.lineWidth / 2, W - x.lineWidth, H - x.lineWidth); }
+    const mx = W * margen, my = H * margen, aw = W - mx * 2, ah = H - my * 2;
+    const wrap = (size) => { x.font = `${peso} ${size}px ${fuente}`; const out = []; for (const para of String(texto).split('\n')) { let line = ''; for (const wd of para.split(/\s+/).filter(Boolean)) { const t = line ? line + ' ' + wd : wd; if (line && x.measureText(t).width > aw) { out.push(line); line = wd; } else line = t; } out.push(line); } return out; };
+    let size = ah, lines = wrap(size);
+    const fits = (sz, ls) => ls.length <= Math.max(lineas, String(texto).split('\n').length) && ls.length * sz * interlinea <= ah + 0.5 && ls.every((l) => x.measureText(l).width <= aw + 0.5);
+    while (size > 4 && !fits(size, lines)) { size *= 0.94; lines = wrap(size); }
+    x.font = `${peso} ${size}px ${fuente}`; x.fillStyle = color; x.textBaseline = 'middle'; x.textAlign = alinear;
+    const tx = alinear === 'left' ? mx : alinear === 'right' ? W - mx : W / 2, total = lines.length * size * interlinea;
+    lines.forEach((l, i) => x.fillText(l, tx, H / 2 - total / 2 + size * interlinea * (i + 0.5)));
+    const tex = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace; tex.anisotropy = 4;
+    const letra = (size * 0.72) / pxu;  // alto real de la mayúscula, en unidades
+    return {map: tex, letra, aviso: letra < minimo ? `rótulo «${String(texto).slice(0, 40)}» con letra de ${(letra / 10).toFixed(2)} m: demasiado pequeña, acorta el texto o agranda el cartel` : null};
+  };
+  const letrero = (texto, opts = {}) => {
+    const {ancho = 40, alto = 10, caras = 1, luz = false, brillo = 0} = opts;
+    const {map, letra, aviso} = letreroTexture(texto, opts);
+    const m = luz ? new T.MeshBasicMaterial({map, toneMapped: false}) : new T.MeshLambertMaterial({map, ...(brillo ? {emissive: new T.Color('#ffffff'), emissiveMap: map, emissiveIntensity: brillo} : {})});
+    const g = new T.Group(); g.name = 'letrero';
+    for (let i = 0; i < caras; i++) { const p = new T.Mesh(new T.PlaneGeometry(ancho, alto), m); p.rotation.y = i * Math.PI; p.position.z = i ? -0.02 : 0.02; p.userData.noCollide = true; g.add(p); }
+    g.userData.letra = letra; if (aviso) g.userData.letreroAviso = aviso;
+    return g;
+  };
 
   /**
    * K.forge: lo que recibe cada función constructora del taller. Medidas en unidades: 10 = 1 metro.
    * mesh/box/cyl/cone/sphere/lathe/extrude/tube crean piezas con el material y el contorno del aspecto del vídeo;
    * pivot crea una articulación con nombre (se anima con w.pose); canvasTexture pinta texturas procedurales.
    */
-  K.forge = {T, mat: toon, mesh, box, cyl, cone, sphere, at, lathe, extrude, tube, canvasTexture, pivot, group: () => new T.Group(), rand: (s) => K.rand(s), palette: () => K.palette};
+  K.forge = {T, mat: toon, mesh, box, cyl, cone, sphere, at, lathe, extrude, tube, canvasTexture, pivot, group: () => new T.Group(), rand: (s) => K.rand(s), palette: () => K.palette,
+    rbox, rcyl, capsula, letrero, letreroTex: letreroTexture, acabado: finishMat, uv: projectUV, acabados: Object.keys(ACABADOS)};
   /** Modelos fabricados por el taller para este vídeo: id → {build(forge, params) → THREE.Object3D, size}. */
   K.models = {};
   K.defineModel = (id, build, info = {}) => { K.models[id] = {build, ...info}; };
@@ -1408,6 +1529,7 @@
      */
     W.audit = (t) => {
       const out = [];
+      { const seen = new Set(); for (const o of objects) o.traverse((n) => { const a = n.userData && n.userData.letreroAviso; if (a && !seen.has(a)) { seen.add(a); out.push({tipo: 'rotulo', grave: false, texto: a}); } }); }
       const tops = objects.filter((o) => o.parent === scene && !o.userData.ghost && o.visible !== false && o.scale.x > 0.05);
       const shapes = tops.map((o) => ({o, sh: obbsOf(o)}));
       for (let i = 0; i < shapes.length; i++) for (let j = i + 1; j < shapes.length; j++) {

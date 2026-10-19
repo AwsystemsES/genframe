@@ -95,7 +95,7 @@ Enlaza `.claude/skills/genframe` en `~/.claude/skills/genframe`, de modo que la 
 npm test
 ```
 
-Pasa el banco de pruebas: varias escenas (mar con tormenta, mar abierto visto de lejos, multitud entre obstáculos, efectos, textos y mapas, decoración de ciudad y campo, y una ciudad con tráfico de día y de noche) que se auditan y se comparan con su imagen de referencia. Tarda unos 8 minutos y **no gasta nada**.
+Pasa el banco de pruebas: varias escenas (mar con tormenta, mar abierto visto de lejos, multitud entre obstáculos, efectos, textos y mapas, decoración de ciudad y campo, una ciudad con tráfico de día y de noche, y un muestrario de acabados y rótulos) que se auditan y se comparan con su imagen de referencia. Tarda unos 9 minutos y **no gasta nada**.
 - **Todas en verde (✔):** el motor está bien instalado.
 - **Alguna falla con «las fotos cambian respecto a la referencia»** en un ordenador distinto al original: puede deberse a otra tarjeta gráfica. Mira las fotos (`pruebas/<prueba>/fotos/todas/hoja.jpg`) y, si se ven bien, fija las referencias de esta máquina con `npm test -- --actualizar`.
 - **Si falla por otra cosa:** lee el error, arréglalo y vuelve a ejecutarlo.
