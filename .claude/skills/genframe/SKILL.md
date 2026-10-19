@@ -58,7 +58,7 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
    - **Mar, costa y nubes** no son piezas: los pone el escenario (`ocean`, `terrain`, `clouds`).
    - **Mapas y geografía**, siempre los mapas reales (`K.map`, mapa extruido), nunca dibujados a mano.
    - **Bucle por pieza:** escribe `piezas/<id>.js`, ejecuta `mesa`, MIRA `vistas.jpg` y corrige hasta que se reconozca a la primera, tenga proporciones creíbles (la barra gris mide 1,8 m), detalle a varias escalas y nada flotando ni atravesado.
-6. **Escenas.** Escribe `escenas/<id>.js` siguiendo `referencia/kit.md`. Ningún plano con suelo vacío: viste el entorno con `w.decorar` (ciudad, campo o interior, con la época que toque). Sincroniza con `K.cue('palabra')`. En 3D encuadra con `w.frame` y haz flotar los barcos con `w.float`. En vertical, el protagonista va en el centro, los titulares arriba y abajo queda libre para los subtítulos.
+6. **Escenas.** Escribe `escenas/<id>.js` siguiendo `referencia/kit.md`. Ningún plano con suelo vacío: viste el entorno con `w.decorar` (ciudad, campo o interior, con la época que toque). En ciudad, ajusta `skyline` a la escala del sitio (un pueblo o Washington, `'baja'` o `'media'`; Manhattan, `'alta'`) y deja el tráfico y los peatones salvo que la escena pida calles vacías. Sincroniza con `K.cue('palabra')`. En 3D encuadra con `w.frame` y haz flotar los barcos con `w.float`. En vertical, el protagonista va en el centro, los titulares arriba y abajo queda libre para los subtítulos.
 7. **Revisión, escena a escena.** Ejecuta `validar` y arregla todos los errores. Luego `fotos --escena=<id>` y MIRA las imágenes con la rúbrica de abajo. Si no llega a un 8, reescríbela; si tras dos intentos sigue floja, replantéala con otro recurso.
 8. **Revisión del conjunto.** `auditar` y arregla todo lo grave y los avisos que se vean. Después `fotos --todas` y mira `hoja.jpg`: coherencia de estilo, variedad, ritmo, que cada escena cuente su parte y que no haya planos repetidos ni oscuros. Corrige lo que baje el vídeo.
 9. **Sonido.** En `plan.json` → `sonido`:
@@ -72,7 +72,7 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
 
 1. **Claridad:** la idea se entiende al instante.
 2. **Protagonista:** un sujeto principal grande, iluminado y reconocible; nunca figuras diminutas en un plano vacío.
-3. **Luz y contraste:** todo se ve, incluso de noche (`exposure` 1.4-1.8 en 3D nocturno, siluetas recortadas).
+3. **Luz y contraste:** todo se ve, incluso de noche (`exposure` 1.4-1.8 en 3D nocturno, siluetas recortadas). Una noche que parece de día es un fallo: usa un cielo con `night: true` para que se enciendan farolas, ventanas y faros.
 4. **Formato:** en vertical, el contenido llena el centro; en horizontal, composición equilibrada.
 5. **Riqueza:** varios elementos, profundidad y algo en movimiento siempre (olas, partículas, cámara, acciones).
 6. **Fidelidad:** se ve exactamente lo que dice la voz en ese momento; las cifras escritas, solo las del guion.

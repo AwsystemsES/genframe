@@ -88,7 +88,7 @@ Un escenario con cielo, luz, niebla, sombras y, si quieres, el mapa real extruid
 ```js
 const w = K.world3d(root, T0, T1, {ground: 'none'|'spain'|'iberia'|'europe'|'mediterranean'|'atlantic'|'world'|[[lonO,latS],[lonE,latN]], sky: 'nombre-de-un-cielo-de-la-dirección', look: 'comic'|'sa'|'clean',
   exposure: 1.15,                                   // sube a 1.4-1.8 en escenas de noche o tormenta: TODO tiene que verse
-  ocean: {waves: 6, length: 120, direction: 0, choppy: 1.6, color: '#2c5d8a', foamLevel: 0.62},   // mar con olas reales (solo con ground 'none')
+  ocean: {waves: 6, length: 120, direction: 0, choppy: 1.6, color: '#2c5d8a', foamLevel: 0.62},   // mar con olas reales (solo con ground 'none'); además ondas (11), manchas (0.22), rizo (70), rizoFuerza (0.3)
   terrain: {coast: {z: -400, beach: 80, bluff: 40, bluffWidth: 70, cliff: false}, z: -900, roughness: 6, colors: {sand, grass, rock, wet}},  // tierra en z < coast.z, mar delante
   clouds: {amount: 0.7, dark: false, height: 400, size: 300}});   // nubes volumétricas
 const lancha = w.add('id-del-reparto', {x: 0, z: 0}, {rotate: 180});   // en terreno se apoya sola en el suelo
@@ -104,7 +104,7 @@ w.formation('avion', 5, {x, z}, {tipo: 'V'|'fila'|'columna'|'rejilla', rotate, y
 w.scatter('roca', 20, {x, z, w, d} | {x, z, r}, {seed, separacion: 1.15, giro: 'azar'});      // reparto sin que se toquen entre sí ni con lo que hay
 w.point(persona, t, destino, {brazo: 'der', hasta});  w.look(persona, t, destino);           // señalar y mirar a una pieza, punto {x,y,z} o [lon, lat]
 w.shake(t, 1);                                                                                  // sacudida de cámara
-w.decorar('ciudad'|'campo'|'interior', {epoca: 'clasica'|'moderna', radio, manzana, calle, densidad, fondo, seed, colores});  // viste el entorno (ver abajo)
+w.decorar('ciudad'|'campo'|'interior', {epoca: 'clasica'|'moderna', radio, manzana, calle, densidad, fondo, seed, colores, skyline: 'baja'|'media'|'alta', trafico: 0-1, peatones: 0-1});  // viste el entorno (ver abajo)
 w.country('fr', t, '#c84d3b');  w.label('Granada', [lon, lat], t, tFin, {style: 'pin'|'city'|'title', color});
 w.route([[lon, lat], …], t, dur, {color, arc: 0});
 w.fx('fire'|'smoke'|'explosion'|'rain'|'sparkle'|'fogonazo'|'columna', dónde, t0, t1, {size, cada, dir, material: 'arena'|'agua'|'tierra', shake, wind, offset});
@@ -120,6 +120,7 @@ w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(
 - Cielos: solo los que define la dirección de arte de este vídeo (te llegan sus nombres) o un objeto `{top, mid, low, fog, sun, amb, sea, land, elev, az, haze, night}`.
 - Encuadra SIEMPRE con `w.frame`: el protagonista grande y reconocible, nunca diminuto en un plano vacío. Alterna tipos de plano y ángulos entre escenas; en una escena de más de 5 s, al menos dos encuadres.
 - Luz: nada de escenas en penumbra. De noche o con tormenta, `exposure` 1.4-1.8, cielo de la dirección con luna o relámpagos y el protagonista con colores que destaquen; el contraluz automático recorta las siluetas.
+- Noche (cielo con `night: true`): el motor ya baja el ambiente y enfría la luna, oscurece los suelos de la decoración y enciende farolas (halo y charco de luz en el suelo), ventanas de los edificios de fondo, faros, pilotos y semáforos. Las piezas del reparto conservan su color: dales luces propias (materiales con `emissive`) si deben brillar.
 - Vertical: el protagonista en el centro de la pantalla (w.frame ya lo coloca); arriba, titulares; abajo, libre para subtítulos.
 - Mar y costa: usa `ocean` y `terrain`, nunca un plano liso de color. Barcos y lanchas flotan con `w.float`.
 - Lo que el motor ya hace solo (no lo programes a mano):
@@ -127,18 +128,20 @@ w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(
   - **Terreno:** lo que va apoyado sigue el terreno aunque se mueva (`suelo: false` para desactivarlo).
   - **Cámara segura:** nunca se mete en el agua ni en el terreno, y se eleva si una ola tapa lo que mira.
   - **Cascos abiertos:** el agua no se dibuja dentro de los cascos de `f.gen.hull` sin cubierta.
-  - **Mar:** crestas afiladas (Gerstner), reflejo del cielo, espuma en la línea de flotación y estela al navegar. `ocean` admite además `gerstner`, `reflejo`, `roughness`, `foamSlope`.
+  - **Mar:** crestas afiladas (Gerstner) con un espectro de 11 ondas (sin patrón de manchas repetido), manchas amplias de luz que derivan, rizo fino en primer plano, reflejo del cielo, espuma con la forma del casco en la línea de flotación y estela al navegar. El agua llega siempre más allá de la bruma (nunca se ve su borde, ni en planos muy lejanos) y una bruma de horizonte la funde con el cielo. `ocean` admite además `gerstner`, `reflejo`, `roughness`, `foamSlope`, `ondas`, `manchas`, `rizo`, `rizoFuerza`.
+  - **Sombras de contacto:** cada pieza apoyada lleva debajo una mancha suave del tamaño de su huella (se aclara si se levanta; `userData.sinSombra` la quita).
 - Nunca un suelo vacío: en cuanto una escena 3D sin mar ni terreno tenga suelo a la vista, llama a `w.decorar` DESPUÉS de colocar las piezas principales y la gente:
   - **`'ciudad'`:**
     - calles en cuadrícula con aceras y bordillo;
     - pasos de cebra y raya discontinua (`epoca: 'moderna'`) o raíles de tranvía (`'clasica'`);
     - plazas adoquinadas donde no cabe calle;
     - farolas de la época, árboles, bancos, bocas de incendio y papeleras;
-    - manzanas de edificios al fondo.
+    - vida urbana: coches que circulan (solo por calles despejadas de punta a punta y en una orientación, así nunca se cruzan), coches aparcados junto al bordillo, autobuses y taxis (moderna), semáforos en los cruces (moderna) y peatones que andan por las aceras con su zancada. `trafico` y `peatones` (0-1, por defecto `densidad`) los regulan; 0 los quita;
+    - edificios de fondo de cinco tipos (cristal, oficinas y viviendas en `'moderna'`; ladrillo y piedra en `'clasica'`), con ventanas en rejilla por plantas, planta baja con comercios y toldos, cornisa, retranqueos en las torres y azotea con depósitos, máquinas o antenas. `skyline: 'baja'` (6-20 m), `'media'` (10-40 m, alguna torre; por defecto) o `'alta'` (rascacielos).
   - **`'campo'`:** hierba, parcelas, camino, vallas, árboles, arbustos, piedras y lomas.
   - **`'interior'`:** tarima, alfombra y paredes con zócalo, ventanas y cuadros hacia −z.
 
-  La decoración rodea lo que ya hay. Las calles solo las desvían las piezas grandes, y el mobiliario cuenta como obstáculo. El mobiliario que se interpone entre la cámara y lo que mira se oculta solo. Si falta, el auditor avisa con «suelo vacío».
+  La decoración rodea lo que ya hay. Las calles solo las desvían las piezas grandes, y el mobiliario y los coches aparcados cuentan como obstáculo; los coches que circulan los vigila el auditor (si una persona cruza su carril con `w.walk`, avisa del choque: pon `trafico: 0` o aparta la ruta). El mobiliario que se interpone entre la cámara y lo que mira se oculta solo. Si falta, el auditor avisa con «suelo vacío».
 - Personas que se desplazan: SIEMPRE `w.walk`. Mover una persona con `K.tl` o `w.move` mientras anda hace que los pies patinen, y el auditor lo marca.
 - Grupos (aviones, barcos, gente, rocas, árboles): `w.formation` o `w.scatter`, nunca posiciones a ojo que puedan solaparse.
 - Escenas ricas: varios modelos del reparto juntos, repetidos con variaciones (`rotate`, `scale`, parámetros), cámara con intención y algo vivo (acciones, partículas, deriva). Nunca un objeto solo en un plano vacío.

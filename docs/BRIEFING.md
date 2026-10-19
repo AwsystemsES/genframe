@@ -249,7 +249,13 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    - **Textos y mapas:** títulos que se encogen solos para caber, mapas a sangre y `K.map.labels`.
    - **Control:** comando `auditar` integrado en `render` y banco `npm test`.
    - **Decoración (18-10):** `w.decorar('ciudad'|'campo'|'interior', {epoca})`, para que ningún plano tenga el suelo vacío; el auditor avisa de «suelo vacío» y el mobiliario no tapa nunca la cámara. Segundo vídeo: `proyectos/crack29/crack29.mp4`, el crack del 29 (60,3 s, ≈0,06 $ de voz).
-4. **Generadores pendientes:** aviones, vehículos, edificios, vegetación, animales y personajes 2D.
+   - **Calidad visual (19-10, tras auditar el vídeo del diésel):**
+     - mar sin bordes ni patrón de manchas (11 ondas, rizo fino, bruma de horizonte, espuma con forma de casco);
+     - edificios de fondo de cinco tipos con ventanas por plantas, comercios, cornisas, azoteas y `skyline`;
+     - vida urbana en `w.decorar('ciudad')`: tráfico, coches aparcados, autobuses, taxis, semáforos y peatones;
+     - luz: sombras de contacto y noche real (suelos oscurecidos, farolas con charco de luz, ventanas y faros encendidos).
+     Pruebas nuevas en el banco: `mar-abierto` y `ciudad-viva` (día y noche). Tercer vídeo: `proyectos/diesel/diesel.mp4` (12:02, cinco capítulos).
+4. **Generadores pendientes:** aviones, edificios protagonistas, vegetación variada, animales y personajes 2D; decoraciones `'industrial'`, `'carretera'`, `'puerto'` y `'oficial'`.
 5. **Mejoras de la herramienta:**
    - `fotos --escena` con zoom de detalle;
    - previsualización en GIF o vídeo corto de una escena;
