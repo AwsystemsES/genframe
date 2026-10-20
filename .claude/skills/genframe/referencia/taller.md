@@ -42,7 +42,7 @@ Escribes el CUERPO de `function (f, p) { … }` y devuelves un `THREE.Object3D` 
 | `f.acabado(color, nombre, {desgaste, extra})` · `f.uv(geometría, escala)` | Material con acabado para mallas propias (`f.mesh` o `f.T.Mesh`), y proyección de coordenadas de textura a escala real. |
 | `f.palette()` | Paleta del vídeo `{bg, ink, accent, accent2, soft}`. |
 
-### Generadores de base (úsalos SIEMPRE que la pieza sea una persona o un barco)
+### Generadores de base (úsalos SIEMPRE que la pieza sea una persona, un barco, un árbol o un animal)
 
 No son modelos fijos: son constructores de calidad que configuras con parámetros y sobre los que añades lo propio de la pieza (insignias, objetos en la mano, carga, superestructura, armamento…). Salen mucho mejor que una persona o un casco montados a mano con cajas.
 
@@ -61,6 +61,19 @@ No son modelos fijos: son constructores de calidad que configuras con parámetro
   - **Extras:** `deck` (color o true), `cabin`, `strakes`.
   - **Rampa:** con `bow: 'rampa'` tiene la articulación «rampa» y la acción abrir; todos tienen la acción cabecear.
   - **Ampliarlo:** encima construyes puente, chimeneas, torretas, mástiles y carga.
+
+- `f.gen.arbol({...})`: árbol o planta por especie, con tronco curvado, ramas y copa de masas irregulares de tres tonos.
+  - **Especies:** `'frondoso'`, `'abedul'`, `'pino'`, `'abeto'`, `'palmera'`, `'frutal'`, `'sauce'`, `'arbusto'`, `'cactus'`, `'seco'` (lista en `f.gen.ARBOLES`).
+  - **Parámetros:** `altura` (por defecto la de la especie), `semilla` (cada una, un árbol distinto), `estacion` (`'primavera'`, `'verano'`, `'otono'`, `'invierno'`: sin hojas los caducos), `hojas`, `corteza`, `fruta` (color), `detalle: 'bajo'` para cientos de árboles.
+  - **Acción:** `viento` (la copa se mece).
+- `f.gen.animal({...})`: animal articulado por especie, con proporciones reales.
+  - **Cuadrúpedos:** `'perro'`, `'gato'`, `'lobo'`, `'zorro'`, `'caballo'`, `'vaca'`, `'ciervo'`, `'oveja'`, `'cerdo'`, `'oso'`. **Aves:** `'gallina'`, `'pato'`, `'paloma'`, `'gaviota'`, `'aguila'` (lista en `f.gen.ANIMALES`).
+  - **Parámetros:** `escala` (1 = adulto típico; 0.5, una cría), `color`, `color2` (manchas, crin).
+  - **Articulaciones:** cuerpo, cuello, cabeza, cola; patas `pata_di`, `pata_dd`, `pata_ti`, `pata_td` con su `rodilla_…`; las aves, `ala_izq` y `ala_der`.
+  - **Acciones:** cuadrúpedos `andar`, `correr`, `comer`, `mirar`, `respirar`, `cola`; aves `andar`, `picotear`, `aletear`, `volar`. Trae su zancada: con `w.walk` las patas no patinan.
+  - **Ampliarlo:** sillas, collares, cencerros o jinetes se cuelgan de sus articulaciones.
+
+Úsalos SIEMPRE que la pieza sea un árbol, una planta o un animal: un animal hecho con esferas sueltas o un árbol de conos apilados no pasa la mesa.
 
 Ejemplo: `const g = f.gen.human({style: 'real', jacket: '#5b5d3e', bottom: '#4f5236', headwear: 'casco_m1', headwearColor: '#4d5236', backpack: '#6b6648', rifle: true}); return g;`
 

@@ -256,6 +256,8 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
     await page.setViewport({width: fmtW, height: fmtH, deviceScaleFactor: 0.25});
     const errs = [];
     page.on('pageerror', (e) => errs.push(e.message));
+    // La auditoría mide física, cámara y textos: dibuja sin posprocesado para ir rápido.
+    await page.evaluateOnNewDocument(() => { window.__gfCalidad = 'borrador'; });
     await page.goto('file://' + path.join(out, 'index.html'), {waitUntil: 'load', timeout: 120000});
     await page.evaluate(() => (document.fonts ? document.fonts.ready.then(() => true) : true));
     await page.evaluate(() => {

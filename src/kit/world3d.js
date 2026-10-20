@@ -41,7 +41,7 @@
   let LOOK = 'comic';
   const toon = (color, extra = {}) => {
     const key = LOOK + color + JSON.stringify(extra);
-    if (!matCache[key]) matCache[key] = LOOK === 'clean' ? new T.MeshStandardMaterial({color: new T.Color(color), roughness: 0.5, metalness: 0.05, ...extra}) : LOOK === 'sa' ? new T.MeshLambertMaterial({color: new T.Color(color), ...extra}) : new T.MeshToonMaterial({color: new T.Color(color), gradientMap: toonRamp, ...extra});
+    if (!matCache[key]) matCache[key] = LOOK === 'clean' || LOOK === 'realista' ? new T.MeshStandardMaterial({color: new T.Color(color), roughness: LOOK === 'realista' ? 0.62 : 0.5, metalness: 0.05, ...extra}) : LOOK === 'sa' ? new T.MeshLambertMaterial({color: new T.Color(color), ...extra}) : new T.MeshToonMaterial({color: new T.Color(color), gradientMap: toonRamp, ...extra});
     return matCache[key];
   };
   const OUTLINE = new T.MeshBasicMaterial({color: 0x0b0b12, side: T.BackSide});
@@ -148,7 +148,7 @@
     if (matCache[key]) return matCache[key];
     const {map, bump} = finishTexture(nombre, desgaste);
     const base = {color: new T.Color(color), map, bumpMap: bump, bumpScale: A.bump, ...extra};
-    return (matCache[key] = LOOK === 'clean' ? new T.MeshStandardMaterial({...base, roughness: A.rough, metalness: A.metal}) : LOOK === 'sa' ? new T.MeshLambertMaterial(base) : new T.MeshToonMaterial({...base, gradientMap: toonRamp}));
+    return (matCache[key] = LOOK === 'clean' || LOOK === 'realista' ? new T.MeshStandardMaterial({...base, roughness: A.rough, metalness: A.metal}) : LOOK === 'sa' ? new T.MeshLambertMaterial(base) : new T.MeshToonMaterial({...base, gradientMap: toonRamp}));
   };
 
   /* ---------------------------------------------------------------- formas redondeadas */
@@ -232,6 +232,86 @@
     sharedRenderer = r;
     return r;
   };
+  /* ---------------------------------------------------------------- posprocesado del fotograma
+   * Con calidad 'alta' (por defecto en fotos, mesa y render; la auditoría usa 'borrador' para ir rápido) cada fotograma
+   * pasa por: supermuestreo (se dibuja más grande y se reduce: bordes limpios y texturas sin parpadeo), oclusión ambiental
+   * (sombra en rincones y uniones), resplandor de lo que brilla, etalonaje (contraste, saturación, calidez y grano) y
+   * suavizado SMAA. Un solo compositor para todo el vídeo: cada escena le presta su escena y su cámara al dibujar.
+   * La dirección de arte puede ajustarlo con arte.render = {supermuestreo, ao, bloom, grano, contraste, saturacion, calidez}. */
+  const renderCfg = () => ({supermuestreo: 1.5, ao: 0.85, bloom: 0.25, grano: 0.022, contraste: 1.04, saturacion: 1.05, calidez: 0, ...((K.data && K.data.render) || {})});
+  const quality = () => window.__gfCalidad || (K.data && K.data.calidad) || 'alta';
+  let sharedPost;
+  const postFX = () => {
+    if (sharedPost !== undefined) return sharedPost;
+    if (quality() === 'borrador' || !T.EffectComposer || !T.GTAOPass) return (sharedPost = null);
+    const cfg = renderCfg(), r = shared(), ss = Math.max(1, Math.min(2, Number(cfg.supermuestreo) || 1));
+    const W = Math.round(K.W * ss), H = Math.round(K.H * ss);
+    r.setSize(W, H, false);
+    const composer = new T.EffectComposer(r); composer.setPixelRatio(1); composer.setSize(W, H);
+    const s0 = new T.Scene(), c0 = new T.PerspectiveCamera();
+    const rp = new T.RenderPass(s0, c0); composer.addPass(rp);
+    let gtao = null;
+    if (cfg.ao > 0) {
+      gtao = new T.GTAOPass(s0, c0, W, H); gtao.blendIntensity = cfg.ao; composer.addPass(gtao);
+      // La oclusión solo la dan los sólidos: fuera halos, charcos de luz, humo, nubes y todo lo transparente.
+      gtao._overrideVisibility = function () { const cache = this._visibilityCache; this.scene.traverse((o) => { const m = o.material, tr = m && (Array.isArray(m) ? m.some((q) => q.transparent) : m.transparent); if (o.visible && (o.isPoints || o.isLine || o.isLine2 || o.isSprite || tr || o.userData.sinAO)) { o.visible = false; cache.push(o); } }); };
+    }
+    composer.addPass(new T.OutputPass());
+    if (cfg.bloom > 0) composer.addPass(new T.UnrealBloomPass(new T.Vector2(W / 2, H / 2), cfg.bloom, 0.5, 0.95));
+    const grade = new T.ShaderPass({
+      uniforms: {tDiffuse: {value: null}, contraste: {value: cfg.contraste}, saturacion: {value: cfg.saturacion}, calidez: {value: cfg.calidez}, grano: {value: cfg.grano}, semilla: {value: 0}},
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float contraste, saturacion, calidez, grano, semilla; varying vec2 vUv;
+        float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + semilla) * 43758.5453); }
+        void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 x = (c.rgb - 0.5) * contraste + 0.5;
+          float l = dot(x, vec3(0.2126, 0.7152, 0.0722)); x = mix(vec3(l), x, saturacion);
+          x += vec3(1.0, 0.4, -1.0) * calidez * 0.06; x += (h(floor(vUv * vec2(${W}.0, ${H}.0))) - 0.5) * grano;
+          gl_FragColor = vec4(clamp(x, 0.0, 1.0), c.a); }`,
+    });
+    composer.addPass(grade);
+    composer.addPass(new T.SMAAPass());
+    composer.setSize(W, H);
+    return (sharedPost = {composer, rp, gtao, grade, W, H});
+  };
+  /** Dibuja la escena (con posprocesado si toca) y la copia, reducida, al lienzo de la escena. */
+  const drawFrame = (scene, camera, ctx2d, t, dist) => {
+    const pf = postFX(), r = shared();
+    if (pf) {
+      pf.rp.scene = scene; pf.rp.camera = camera;
+      if (pf.gtao) { pf.gtao.scene = scene; pf.gtao.camera = camera; pf.gtao.updateGtaoMaterial({radius: Math.min(60, Math.max(2, dist * 0.025))}); }
+      pf.grade.uniforms.semilla.value = (t * 37.31) % 1000;
+      pf.composer.render();
+    } else r.render(scene, camera);
+    ctx2d.clearRect(0, 0, K.W, K.H);
+    ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = 'high';
+    ctx2d.drawImage(r.domElement, 0, 0, K.W, K.H);
+  };
+
+  /* ---------------------------------------------------------------- luz del entorno
+   * Un cielo en miniatura (el de la dirección de arte, con su sol y su suelo) convertido en luz de entorno: los materiales
+   * físicos (aspecto 'clean' y 'realista', el agua, el terreno) reflejan el cielo de su escena y se iluminan con él. */
+  const envCache = {};
+  const skyEnvironment = (S, sky = null) => {
+    const key = JSON.stringify([S.top, S.mid, S.low, S.fog, S.land, S.sun, S.sunI, S.elev, S.az, S.night, !!sky]);
+    if (envCache[key]) return envCache[key];
+    const es = new T.Scene(), el = (S.elev * Math.PI) / 180, az = (S.az * Math.PI) / 180, dir = new T.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az));
+    if (sky) { const s2 = new T.Sky(); s2.scale.setScalar(50); Object.keys(sky.material.uniforms).forEach((k) => { const v = sky.material.uniforms[k].value; s2.material.uniforms[k].value = v && v.clone ? v.clone() : v; }); es.add(s2); }
+    else {
+      const c = document.createElement('canvas'); c.width = 4; c.height = 256; const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256);
+      const ground = new T.Color(S.land || '#7a7a6a').multiplyScalar(0.55);
+      [[0, S.top], [0.28, S.mid], [0.44, S.low], [0.5, S.fog], [0.52, '#' + new T.Color(S.land || '#7a7a6a').getHexString()], [1, '#' + ground.getHexString()]].forEach(([p, col]) => g.addColorStop(p, col));
+      x.fillStyle = g; x.fillRect(0, 0, 4, 256);
+      const tx = new T.CanvasTexture(c); tx.colorSpace = T.SRGBColorSpace;
+      es.add(new T.Mesh(new T.SphereGeometry(10, 32, 16), new T.MeshBasicMaterial({map: tx, side: T.BackSide})));
+      const sunC = new T.Color(S.sun || '#fff4e0').multiplyScalar(S.night ? 1.2 : 2 + (S.sunI || 2) * 0.5);
+      const sd = new T.Mesh(new T.SphereGeometry(S.night ? 0.25 : 0.5, 12, 8), new T.MeshBasicMaterial({color: sunC})); sd.position.copy(dir).multiplyScalar(9); es.add(sd);
+    }
+    const pm = new T.PMREMGenerator(shared());
+    const tex = pm.fromScene(es, 0.03).texture; pm.dispose();
+    return (envCache[key] = tex);
+  };
+  /** Textura del degradado del cielo (la misma que el fondo CSS), para que el fotograma sea opaco con posprocesado. */
+  const skyBackground = (S) => { const c = document.createElement('canvas'); c.width = 4; c.height = 512; const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 512); [[0, S.top], [0.45, S.mid], [0.7, S.low], [1, S.fog]].forEach(([p, col]) => g.addColorStop(p, col)); x.fillStyle = g; x.fillRect(0, 0, 4, 512); const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; return t; };
   // La geometría del mapa se calcula una vez por encuadre y país, y la comparten todas las escenas.
   const geoCache = {};
 
@@ -334,7 +414,18 @@
     const renderer = shared();
     const scene = new T.Scene();
     scene.fog = new T.Fog(new T.Color(S.fog), 900, 2600);
-    const camera = new T.PerspectiveCamera(K.vertical ? 62 : 38, K.W / K.H, 1, 6000);
+    // Cielo físico (dispersión de la luz según la altura del sol) si el cielo de la dirección de arte lo pide: {fisico: true,
+    // turbidez, rayleigh}. Si no, el degradado de la dirección de arte.
+    let physSky = null;
+    if (S.fisico && T.Sky) {
+      physSky = new T.Sky(); const u = physSky.material.uniforms, el0 = (S.elev * Math.PI) / 180, az0 = (S.az * Math.PI) / 180;
+      u.turbidity.value = S.turbidez ?? 3; u.rayleigh.value = S.rayleigh ?? 1.6; u.mieCoefficient.value = S.mie ?? 0.005; u.mieDirectionalG.value = 0.82;
+      u.sunPosition.value.set(Math.cos(el0) * Math.sin(az0), Math.sin(el0), Math.cos(el0) * Math.cos(az0));
+      physSky.material.fog = false; scene.add(physSky);
+    }
+    scene.environment = skyEnvironment(S, physSky);
+    scene.environmentIntensity = look === 'realista' || look === 'clean' ? 1 : 0.6;
+    if (postFX() && !physSky) scene.background = skyBackground(S);    const camera = new T.PerspectiveCamera(K.vertical ? 62 : 38, K.W / K.H, 1, 6000);
     let sunSprite = null;
     if (look === 'sa' || S.haze) {
       const c = document.createElement('canvas'); c.width = c.height = 256;
@@ -437,7 +528,7 @@
       // malla no puede tener).
       const rippleTex = (() => { const N = 256, rr = K.rand((o.seed || 21) + 3), hgt = new Float32Array(N * N); const sm = (q) => q * q * (3 - 2 * q); for (let k = 0, amp = 0.5; k < 4; k++, amp *= 0.5) { const P = 8 << k, G = Array.from({length: P * P}, () => rr()); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const fx = (x / N) * P, fy = (y / N) * P, xi = Math.floor(fx), yi = Math.floor(fy), u = sm(fx - xi), v = sm(fy - yi), g = (i, j) => G[((j % P) * P) + (i % P)]; const a0 = g(xi, yi), b0 = g(xi + 1, yi), c0 = g(xi, yi + 1), d0 = g(xi + 1, yi + 1); hgt[y * N + x] += amp * (a0 + (b0 - a0) * u + (c0 - a0) * v + (a0 - b0 - c0 + d0) * u * v); } } const c = document.createElement('canvas'); c.width = c.height = N; const x2 = c.getContext('2d'), img = x2.createImageData(N, N); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const hx = hgt[y * N + ((x + 1) % N)] - hgt[y * N + ((x + N - 1) % N)], hy = hgt[((y + 1) % N) * N + x] - hgt[((y + N - 1) % N) * N + x]; const nx = -hx * 6, ny = -hy * 6, l = Math.hypot(nx, ny, 1), i = (y * N + x) * 4; img.data[i] = (nx / l * 0.5 + 0.5) * 255; img.data[i + 1] = (ny / l * 0.5 + 0.5) * 255; img.data[i + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[i + 3] = 255; } x2.putImageData(img, 0, 0); const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; return t; })();
       const uvs = geo.attributes.uv, rippleScale = o.rizo ?? 70;
-      const water = new T.Mesh(geo, new T.MeshStandardMaterial({vertexColors: true, flatShading: false, roughness: o.roughness ?? 0.6, metalness: 0.0, normalMap: rippleTex, normalScale: new T.Vector2(o.rizoFuerza ?? 0.3, o.rizoFuerza ?? 0.3)}));
+      const water = new T.Mesh(geo, new T.MeshStandardMaterial({vertexColors: true, flatShading: false, roughness: o.roughness ?? 0.34, metalness: 0.0, envMapIntensity: o.reflejoCielo ?? 0.6, normalMap: rippleTex, normalScale: new T.Vector2(o.rizoFuerza ?? 0.3, o.rizoFuerza ?? 0.3)}));
       water.receiveShadow = true; water.renderOrder = 2; scene.add(water);
       seaGeo = geo;
       seaMesh.position.y = -A * 3; seaMesh.material.color = deep.clone().multiplyScalar(0.6); seaMesh.renderOrder = 2; seaMesh.scale.setScalar(25);
@@ -479,7 +570,7 @@
           nrm.set(nr[i], nr[i + 1], nr[i + 2]);
           view.set(camera.position.x - px, camera.position.y - py, camera.position.z - pz).normalize();
           const fres = Math.pow(1 - Math.max(0, nrm.dot(view)), 4);
-          tc.lerp(skyRef, fres * (o.reflejo ?? 0.32));
+          tc.lerp(skyRef, fres * (o.reflejo ?? 0.16));
           // Espuma en las crestas: por altura y por pendiente (donde la ola rompe).
           let f = 0;
           if (py > A * foamLevel) f = Math.min(1, (py / A - foamLevel) * 4);
@@ -1061,12 +1152,12 @@
       // Halo y charco de luz de una farola encendida (de noche): se añaden aparte para no agrandar la huella del mobiliario.
       const lampGlow = (g) => { const [lx, ly, lz] = g.userData.lamp, c = Math.cos(g.rotation.y), sn = Math.sin(g.rotation.y), wx = g.position.x + lx * c + lz * sn, wz = g.position.z - lx * sn + lz * c;
         const halo = new T.Sprite(new T.SpriteMaterial({map: puff(), color: new T.Color('#ffd28a'), transparent: true, opacity: 0.85, depthWrite: false, blending: T.AdditiveBlending})); halo.scale.set(26, 26, 1); halo.position.set(wx, g.position.y + ly, wz); halo.userData.decor = true; scene.add(halo);
-        const pool = new T.Mesh(new T.PlaneGeometry(140, 140), new T.MeshBasicMaterial({map: puff(), color: new T.Color('#ffb860'), transparent: true, opacity: 0.55, depthWrite: false, blending: T.AdditiveBlending})); pool.rotation.x = -Math.PI / 2; pool.position.set(wx, g.position.y + 1.2, wz); pool.userData.decor = true; scene.add(pool); };
+        const pool = new T.Mesh(new T.PlaneGeometry(140, 140), new T.MeshBasicMaterial({map: puff(), color: new T.Color('#ffb860'), transparent: true, opacity: postFX() ? 0.3 : 0.55, depthWrite: false, blending: T.AdditiveBlending})); pool.rotation.x = -Math.PI / 2; pool.position.set(wx, g.position.y + 1.2, wz); pool.userData.decor = true; scene.add(pool); };
       const prop = (g, x, z, ry = 0) => { // mobiliario: cuenta como obstáculo
         g.position.set(x, terrainHeight ? terrainHeight(x, z) : 0, z); g.rotation.y = ry; scene.add(g);
         g.updateMatrixWorld(true); const b = new T.Box3().setFromObject(g); b.min.sub(g.position); b.max.sub(g.position);
         g.userData.local = {min: b.min, max: b.max}; g.userData.baseScale = 1; g.userData.model = g.name || 'decorado'; g.userData.decor = true; g.userData.grounded = true; g.userData.joints = {}; g.userData.actions = {};
-        objects.push(g); fps.push(footprint(g)); if (g.userData.lamp) lampGlow(g); return g;
+        objects.push(g); fps.push(footprint(g)); if (g.userData.lamp) lampGlow(g); if (g.userData.viento) { const vf = g.userData.viento, ph0 = r() * 10; updaters.push((t) => vf(t + ph0, 1)); } return g;
       };
       const tex = (w, h, rep, draw) => { const t = canvasTexture(w, h, draw); t.repeat.set(rep[0], rep[1]); const m = new T.MeshLambertMaterial({map: t}); if (NIGHT) m.color.copy(NIGHT_TINT); return m; };
       const P = K.palette;
@@ -1076,7 +1167,10 @@
         else { g.add(cyl(0.9, 1.3, 60, '#5d6266', 10, 30)); const arm = box(14, 0.8, 0.8, '#5d6266', 59); arm.position.x = 6.5; g.add(arm); const hd = box(7, 1.4, 3, '#3c4044', 58.3); hd.position.x = 13; g.add(hd); const led = box(5, 0.3, 2.2, '#fff6dc', 57.5, {outline: 0, extra: {emissive: '#fff1c8', emissiveIntensity: 0.8}}); led.position.x = 13; g.add(led); }
         if (NIGHT) g.userData.lamp = epoca === 'clasica' ? [0, 36, 0] : [13, 57.5, 0];
         return g; };
-      const arbol = () => { const g = new T.Group(); g.name = 'arbol'; const h = 34 + r() * 18; g.add(box(10, 0.6, 10, '#5a4a3a', 0.3, {outline: 0})); g.add(cyl(1.4, 2, h * 0.55, '#5a4232', 8, h * 0.275));
+      const arbol = (especies = tipo === 'campo' ? ['frondoso', 'frondoso', 'abedul', 'pino'] : ['frondoso']) => {
+        const G = K.forge.gen;
+        if (G && G.arbol) { const esp = especies[Math.floor(r() * especies.length)], t = G.arbol({especie: esp, semilla: Math.floor(r() * 1e6), altura: tipo === 'campo' ? 55 + r() * 55 : 42 + r() * 18, detalle: 'bajo', estacion: colores.estacion}); const g = new T.Group(); g.name = 'arbol'; g.add(t); g.userData.viento = t.userData.actions.viento; return g; }
+        const g = new T.Group(); g.name = 'arbol'; const h = 34 + r() * 18; g.add(box(10, 0.6, 10, '#5a4a3a', 0.3, {outline: 0})); g.add(cyl(1.4, 2, h * 0.55, '#5a4232', 8, h * 0.275));
         const greens = ['#5f7f45', '#6e8c4e', '#557545']; for (let i = 0; i < 4; i++) { const b = sphere(8 + r() * 5, greens[i % 3], 0, {outline: 0.03}); b.position.set((r() - 0.5) * 9, h * 0.62 + r() * h * 0.35, (r() - 0.5) * 9); b.scale.y = 0.85; g.add(b); } return g; };
       const bancoCalle = () => { const g = new T.Group(); g.name = 'banco_calle'; const wood = '#8a5a34', iron = '#2a2c2e'; for (const sx of [-7, 7]) { g.add(f3(box(0.8, 4.5, 4.5, iron, 2.25), sx, 0, 0)); } g.add(box(17, 0.8, 4.4, wood, 4.6)); const back = box(17, 4, 0.7, wood, 7.4); back.position.z = -2; g.add(back); return g; };
       const hidrante = () => { const g = new T.Group(); g.name = 'boca_incendios'; const col = epoca === 'clasica' ? '#3a4a3a' : '#b8322a'; g.add(cyl(1.6, 1.8, 6, col, 10, 3)); g.add(sphere(1.7, col, 6.2, {outline: 0.04})); for (const s2 of [-1, 1]) { const n = cyl(0.7, 0.7, 2, col, 8, 0); n.rotation.z = Math.PI / 2; n.position.set(s2 * 1.9, 4.2, 0); g.add(n); } return g; };
@@ -1301,8 +1395,30 @@
         const grassMat = tex(256, 256, [radio / 25, radio / 25], (c, w, h) => { c.fillStyle = colores.hierba || '#7c9450'; c.fillRect(0, 0, w, h); for (let i = 0; i < 2600; i++) { c.fillStyle = ['rgba(60,80,30,.25)', 'rgba(160,180,90,.22)', 'rgba(110,130,60,.25)'][i % 3]; c.fillRect(r() * w, r() * h, 2 + r() * 3, 3 + r() * 5); } });
         flat(radio * 2.6, radio * 2.6, grassMat, cx, 0.06, cz);
         // Parcelas de cultivo con surcos, donde no hay nada.
-        const crops = ['#b9a35a', '#8aa04e', '#a38a5a', '#c2b26a'];
-        for (let i = 0; i < 22; i++) { const a = r() * Math.PI * 2, d = radio * (0.12 + Math.pow(r(), 1.4) * 0.8), x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, w = 160 + r() * 220, dd = 120 + r() * 200; if (occupied(x, z, Math.max(w, dd) * 0.6)) continue; const col = crops[i % 4]; const fm = tex(64, 64, [w / 40, 1], (c, W2, H2) => { c.fillStyle = col; c.fillRect(0, 0, W2, H2); c.fillStyle = 'rgba(0,0,0,.18)'; for (let x2 = 0; x2 < W2; x2 += 8) c.fillRect(x2, 0, 3, H2); }); flat(w, dd, fm, x, 0.09, z, r() * Math.PI); }
+        const crops = ['#b9a35a', '#8aa04e', '#a38a5a', '#c2b26a'], fields = [];
+        for (let i = 0; i < 22; i++) { const a = r() * Math.PI * 2, d = radio * (0.12 + Math.pow(r(), 1.4) * 0.8), x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, w = 160 + r() * 220, dd = 120 + r() * 200; if (occupied(x, z, Math.max(w, dd) * 0.6)) continue; fields.push({x, z, w, dd, rot: 0}); const col = crops[i % 4]; const fm = tex(64, 64, [w / 40, 1], (c, W2, H2) => { c.fillStyle = col; c.fillRect(0, 0, W2, H2); c.fillStyle = 'rgba(0,0,0,.18)'; for (let x2 = 0; x2 < W2; x2 += 8) c.fillRect(x2, 0, 3, H2); }); fields[fields.length - 1].rot = (fields.length * 0.37) % Math.PI; flat(w, dd, fm, x, 0.09, z, fields[fields.length - 1].rot); }
+        // Hierba alta: miles de matas instanciadas (sin coste) alrededor de lo que hay, con matices de verde y altura
+        // variable; se mecen con el viento. No crecen en el camino, en las parcelas ni bajo las piezas.
+        if (densidad > 0 && T.mergeGeometries) {
+          const parts = []; for (let k = 0; k < 5; k++) { const hh = 2.6 + (k % 3) * 0.6, gb = new T.PlaneGeometry(0.7, hh, 1, 3); gb.translate(0, hh / 2, 0); const pp = gb.attributes.position, vc = []; for (let i = 0; i < pp.count; i++) { const u = pp.getY(i) / hh; pp.setX(i, pp.getX(i) * (1 - u * 0.9) + u * u * (k % 2 ? 0.8 : -0.8)); const c = 0.55 + u * 0.6; vc.push(c, c, c); } gb.setAttribute('color', new T.Float32BufferAttribute(vc, 3)); gb.rotateY((k * Math.PI * 2) / 5 + k * 0.3); gb.translate(Math.cos(k * 2.4) * 0.6, 0, Math.sin(k * 2.4) * 0.6); parts.push(gb); }
+          const blade = T.mergeGeometries(parts), gmat = new T.MeshLambertMaterial({color: NIGHT ? NIGHT_TINT : '#ffffff', side: T.DoubleSide, vertexColors: true});
+          const wind = {value: 0};
+          gmat.onBeforeCompile = (sh) => { sh.uniforms.uViento = wind; sh.vertexShader = 'uniform float uViento;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n float sw = sin(uViento * 1.7 + instanceMatrix[3].x * 0.05 + instanceMatrix[3].z * 0.07) * 0.09 * position.y;\n transformed.x += sw; transformed.z += sw * 0.6;\n#endif'); };
+          const pathZ = (x) => cz + Math.sin((x - cx) / 260) * 90 + radio * 0.12;
+          const inField = (x, z) => fields.some((q) => { const dx = x - q.x, dz = z - q.z, c = Math.cos(q.rot), sn = Math.sin(q.rot), lx = dx * c + dz * sn, lz = -dx * sn + dz * c; return Math.abs(lx) < q.w / 2 && Math.abs(lz) < q.dd / 2; });
+          const N = Math.round(16000 * densidad), im = new T.InstancedMesh(blade, gmat, N), m4 = new T.Matrix4(), q4 = new T.Quaternion(), eu = new T.Euler(), v3 = new T.Vector3(), s3 = new T.Vector3(), cl = new T.Color();
+          const greens = [colores.hierba || '#7c9450', '#6a8a42', '#8aa457', '#9aa85a', '#5f7f3e'];
+          let n = 0;
+          for (let i = 0; i < N * 3 && n < N; i++) {
+            const a = r() * Math.PI * 2, d = Math.sqrt(r()) * radio * 0.6, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+            if (Math.abs(z - pathZ(x)) < 24 || inField(x, z) || occupied(x, z, 5)) continue;
+            eu.set((r() - 0.5) * 0.25, r() * Math.PI * 2, (r() - 0.5) * 0.25); q4.setFromEuler(eu); const sc = 0.7 + r() * 0.9;
+            m4.compose(v3.set(x, 0, z), q4, s3.set(sc, sc * (0.7 + r() * 0.7), sc)); im.setMatrixAt(n, m4);
+            im.setColorAt(n, cl.set(greens[Math.floor(r() * greens.length)]).multiplyScalar(0.85 + r() * 0.3)); n++;
+          }
+          im.count = n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; im.receiveShadow = true; im.castShadow = false; im.userData.decor = true; scene.add(im);
+          updaters.push((t) => { wind.value = t; });
+        }
         // Camino de tierra que cruza.
         const dirt = new T.MeshLambertMaterial({color: nc(colores.tierra || '#a88e66')});
         for (let k = -radio; k < radio; k += 30) { const x = cx + k, z = cz + Math.sin(k / 260) * 90 + radio * 0.12; if (!occupied(x, z, 20)) flat(34, 32, dirt, x, 0.1, z); }
@@ -1508,9 +1624,8 @@
       if (sunSprite) { const d = scene.fog.far * 0.9; sunSprite.position.set(camera.position.x + Math.cos(el) * Math.sin(az) * d, camera.position.y + Math.sin(el) * d * 0.9 + 10, camera.position.z + Math.cos(el) * Math.cos(az) * d); sunSprite.scale.setScalar(d * 0.55); }
       if (S.night) objects.forEach((o) => o.traverse((n) => { if (n.material && n.material.emissiveMap) n.material.emissiveIntensity = 1.4; }));
       if (ground === 'none') contactShadows();
-      renderer.render(scene, camera);
-      ctx2d.clearRect(0, 0, K.W, K.H);
-      ctx2d.drawImage(renderer.domElement, 0, 0);
+      if (physSky) { physSky.scale.setScalar(camera.far * 0.9); physSky.position.copy(camera.position); }
+      drawFrame(scene, camera, ctx2d, t, cam.dist);
       if (glowCtx) { glowCtx.clearRect(0, 0, K.W / 4, K.H / 4); glowCtx.filter = 'brightness(1.1) contrast(1.6)'; glowCtx.drawImage(renderer.domElement, 0, 0, K.W / 4, K.H / 4); }
       for (const g of tags) {
         if (g.obj) { g.obj.getWorldPosition(tmp); tmp.y += g.y; } else tmp.copy(g.p);

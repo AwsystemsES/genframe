@@ -46,7 +46,9 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
    - `palette` (bg, bg2, ink, accent, accent2, soft);
    - `fonts` (title, body, label, hand: solo las de `src/catalog.mjs`);
    - `look` (comic, sa o clean);
-   - `skies` (nombre → `{top, mid, low, fog, sun, sunI, amb, ambI, sea, land, elev, az, haze, night}`);
+   - `skies` (nombre → `{top, mid, low, fog, sun, sunI, amb, ambI, sea, land, elev, az, haze, night}`; con `fisico: true`, cielo físico según la altura del sol);
+   - `look`: `'comic'`, `'sa'`, `'clean'` o `'realista'` (materiales físicos que reflejan el cielo);
+   - `render` (opcional): ajuste de la imagen final `{supermuestreo, ao, bloom, grano, contraste, saturacion, calidez}`;
    - `background` (`{type, angle, grain}`), `captions` (`{style, highlight, text, background}`) y `vignette`.
 
    Escribe además, para ti, la idea visual del vídeo y las reglas de dibujo comunes. Nunca un vídeo en penumbra: aunque sea de noche, todo tiene que verse.

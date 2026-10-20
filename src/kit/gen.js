@@ -317,5 +317,215 @@
     return outer;
   }
 
-  F.gen = {human, hull, HEADWEAR, HAIR};
+
+  /* ---------------------------------------------------------------- árboles y plantas */
+  const ARBOLES = ['frondoso', 'abedul', 'pino', 'abeto', 'palmera', 'frutal', 'sauce', 'arbusto', 'cactus', 'seco'];
+  /** Masa de hojas orgánica: icosaedro con los vértices desplazados (sin dos iguales), sombreado facetado. */
+  const blob = (rad, color, r, o = {outline: 0.03}) => {
+    const geo = new T.IcosahedronGeometry(rad, 1), p = geo.attributes.position, seen = new Map();
+    for (let i = 0; i < p.count; i++) { const k = `${p.getX(i).toFixed(2)},${p.getY(i).toFixed(2)},${p.getZ(i).toFixed(2)}`; if (!seen.has(k)) seen.set(k, 0.82 + r() * 0.32); const f = seen.get(k); p.setXYZ(i, p.getX(i) * f, p.getY(i) * f * 0.92, p.getZ(i) * f); }
+    geo.computeVertexNormals();
+    return F.mesh(geo, color, {...o, extra: {flatShading: true}});
+  };
+  /**
+   * Árbol o planta por especie. p: {especie: 'frondoso'|'abedul'|'pino'|'abeto'|'palmera'|'frutal'|'sauce'|'arbusto'|'cactus'|'seco',
+   * altura (unidades; por defecto la típica de la especie), semilla, estacion: 'primavera'|'verano'|'otono'|'invierno',
+   * hojas (color), corteza (color), fruta (color, para 'frutal'), detalle: 'bajo' (menos piezas, para decorados con cientos)}. Tronco curvado con ramas, copa de masas irregulares con
+   * tres tonos, y la acción «viento» (la copa se mece). Base en y = 0.
+   */
+  function arbol(p = {}) {
+    const esp = pick(p.especie, ARBOLES, 'frondoso'), r = K.rand(p.semilla ?? p.seed ?? 7), est = pick(p.estacion, ['primavera', 'verano', 'otono', 'invierno'], 'verano');
+    const H = clamp(Number(p.altura) || {frondoso: 90, abedul: 110, pino: 140, abeto: 120, palmera: 120, frutal: 55, sauce: 85, arbusto: 18, cactus: 60, seco: 80}[esp], 4, 600);
+    const bark = p.corteza || {abedul: '#e9e4da', palmera: '#8a7356', pino: '#6a4a34', abeto: '#5a4232', cactus: '#4f7a3e'}[esp] || '#5e4634';
+    const leafBase = p.hojas || {pino: '#3f6a3a', abeto: '#2f5a3a', palmera: '#5f8a3e', sauce: '#7a9a4a', abedul: '#8aa24e', arbusto: '#5d7f45'}[esp] || '#5f8a45';
+    const tones = est === 'otono' ? ['#c9822e', '#b5542a', '#d9a63a', '#8a6a2a'] : est === 'primavera' ? [shade(leafBase, 1.15), leafBase, '#e8b7c8'] : [shade(leafBase, 0.85), leafBase, shade(leafBase, 1.15)];
+    const low = p.detalle === 'bajo';
+    const bare = est === 'invierno' && !['pino', 'abeto', 'palmera', 'cactus'].includes(esp) || esp === 'seco';
+    const g = new T.Group(), crown = F.pivot(g, 'copa', 0, 0, 0);
+    crown.userData.noCollide = true;  // las copas pueden tocarse entre sí (como en un bosque); el tronco sí choca
+    const tone = () => tones[Math.floor(r() * tones.length)];
+    const bendX = (r() - 0.5) * H * 0.08, bendZ = (r() - 0.5) * H * 0.08;
+    const trunk = (h, r0, pts = 6) => { const P = []; for (let i = 0; i <= pts; i++) { const u = i / pts; P.push([bendX * Math.sin(u * Math.PI * 0.8), u * h, bendZ * Math.sin(u * Math.PI * 0.8)]); } const t = F.tube(P, r0, bark, {seg: 24, radial: 9, o: {outline: 0.04, acabado: esp === 'abedul' ? null : 'madera', escala: 12}}); g.add(t); const foot = F.cone(r0 * 1.9, r0 * 2.2, shade(bark, 0.85), 9, r0 * 1.1, {outline: 0.04}); g.add(foot); return P; };
+    const branch = (from, to, rad) => crown.add(F.tube([from, [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2 + rad * 2, (from[2] + to[2]) / 2], to], rad, bark, {seg: 10, radial: 6, o: {outline: 0.04}}));
+    if (esp === 'pino') {
+      trunk(H * 0.86, H * 0.022);
+      for (let i = 0; i < (low ? 3 : 5); i++) { const a = r() * Math.PI * 2, y = H * (0.7 + r() * 0.2), d = H * (0.08 + r() * 0.1), to = [Math.cos(a) * d + bendX, y + H * 0.04, Math.sin(a) * d + bendZ]; branch([bendX * 0.9, y - H * 0.06, bendZ * 0.9], to, H * 0.008); const b = blob(H * (0.08 + r() * 0.05), tone(), r); b.scale.y *= 0.45; b.position.set(...to); crown.add(b); }
+      const top = blob(H * 0.12, tone(), r); top.scale.y *= 0.5; top.position.set(bendX, H * 0.9, bendZ); crown.add(top);
+    } else if (esp === 'abeto') {
+      trunk(H * 0.3, H * 0.025);
+      const tiers = 6; for (let i = 0; i < tiers; i++) { const u = i / tiers, rad = H * 0.26 * (1 - u * 0.82), hh = H * 0.24; const c = F.cone(rad, hh, tone(), 9, 0, {outline: 0.03}); const cm = c.children[0]; const pp = cm.geometry.attributes.position; for (let k = 0; k < pp.count; k++) if (pp.getY(k) < 0) { const f = 0.85 + r() * 0.3; pp.setX(k, pp.getX(k) * f); pp.setZ(k, pp.getZ(k) * f); pp.setY(k, pp.getY(k) - r() * hh * 0.12); } cm.geometry.computeVertexNormals(); c.position.set(bendX * u, H * 0.18 + u * H * 0.66 + hh / 2, bendZ * u); c.rotation.y = r() * 3; crown.add(c); }
+    } else if (esp === 'palmera') {
+      const P = []; const lean = (r() - 0.5) * 0.5; for (let i = 0; i <= 8; i++) { const u = i / 8; P.push([Math.sin(u * 1.4) * H * 0.18 * lean * 2, u * H, Math.sin(u * 1.2) * H * 0.05]); }
+      g.add(F.tube(P, H * 0.028, bark, {seg: 30, radial: 9, o: {outline: 0.04}}));
+      for (let i = 1; i < 14; i++) { const q = P[Math.round((i / 14) * 8)]; const ring = F.cyl(H * 0.032, H * 0.032, H * 0.012, shade(bark, 0.8), 9, 0, {outline: 0}); ring.position.set(q[0], (i / 14) * H, q[2]); g.add(ring); }
+      const tip = P[8]; crown.position.set(tip[0], tip[1], tip[2]);
+      for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2 + r() * 0.3, L = H * (0.32 + r() * 0.1), pts = []; for (let k = 0; k <= 6; k++) { const u = k / 6; pts.push([Math.cos(a) * L * u, Math.sin(u * Math.PI * 0.7) * L * 0.25 - u * u * L * 0.45, Math.sin(a) * L * u]); }
+        crown.add(F.tube(pts, H * 0.006, shade(leafBase, 0.8), {seg: 12, radial: 4, o: {outline: 0}}));
+        for (let k = 1; k < 9; k++) { const u = k / 9, i0 = Math.floor(u * 6), q = pts[i0], len = L * 0.16 * Math.sin(u * Math.PI) + L * 0.04; for (const s of [-1, 1]) { const lf = F.box(len, H * 0.002, H * 0.02, k % 2 ? leafBase : shade(leafBase, 1.12), 0, {outline: 0}); lf.position.set(q[0] - Math.sin(a) * s * len / 2, q[1] - len * 0.15, q[2] + Math.cos(a) * s * len / 2); lf.rotation.y = -a + s * 0.0; lf.rotation.z = s * 0.35; crown.add(lf); } } }
+      crown.add(F.sphere(H * 0.035, '#6a5a2a', 0, {outline: 0.03}));
+    } else if (esp === 'cactus') {
+      const R = H * 0.09; g.add(F.capsula(R, H - R * 2, bark, H / 2, {acabado: 'plastico'}));
+      for (let i = 0; i < 2; i++) { const s = i ? -1 : 1, y = H * (0.35 + r() * 0.2), up = H * (0.25 + r() * 0.15); const arm = F.capsula(R * 0.7, up, bark, 0); arm.position.set(s * R * 2.4, y + up / 2 + R, 0); g.add(arm); const el = F.capsula(R * 0.7, R * 1.6, bark, 0); el.rotation.z = Math.PI / 2; el.position.set(s * R * 1.5, y, 0); g.add(el); }
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; const rib = F.box(R * 0.12, H * 0.9, R * 0.12, shade(bark, 0.8), H * 0.48, {outline: 0}); rib.position.x = Math.cos(a) * R * 0.97; rib.position.z = Math.sin(a) * R * 0.97; g.add(rib); }
+    } else if (esp === 'arbusto') {
+      for (let i = 0; i < 6; i++) { const b = blob(H * (0.35 + r() * 0.2), tone(), r); b.position.set((r() - 0.5) * H * 0.9, H * (0.35 + r() * 0.3), (r() - 0.5) * H * 0.9); crown.add(b); }
+    } else {
+      // Frondosos (frondoso, abedul, frutal, sauce, seco): tronco, ramas principales y masas de hojas en sus puntas.
+      const th = H * (esp === 'abedul' ? 0.62 : esp === 'frutal' ? 0.42 : 0.5), tr = H * (esp === 'abedul' ? 0.018 : 0.032);
+      trunk(th, tr);
+      if (esp === 'abedul') for (let i = 0; i < (low ? 4 : 9); i++) { const m = F.box(tr * 1.2, H * 0.012, tr * 0.5, '#2a2622', 0, {outline: 0}); const y = H * 0.06 + r() * th * 0.9, u = y / th; m.position.set(bendX * Math.sin(u * 2.5) + tr * 0.6, y, bendZ * Math.sin(u * 2.5)); m.rotation.y = r() * 3; g.add(m); }
+      const nb = low ? 3 : esp === 'abedul' ? 4 : 6, tops = [];
+      for (let i = 0; i < nb; i++) { const a = (i / nb) * Math.PI * 2 + r() * 0.6, y0 = th * (0.65 + r() * 0.3), spread = H * (esp === 'sauce' ? 0.3 : esp === 'frutal' ? 0.28 : 0.24) * (0.7 + r() * 0.5), to = [Math.cos(a) * spread + bendX, y0 + H * (0.18 + r() * 0.16), Math.sin(a) * spread + bendZ]; branch([bendX * 0.8, y0, bendZ * 0.8], to, tr * 0.45); tops.push(to); }
+      tops.push([bendX, th + H * 0.3, bendZ]);
+      if (!bare) for (const [x, y, z] of tops) for (let k = 0; k < (low ? 1 : esp === 'abedul' ? 2 : 3); k++) { const b = blob(H * (esp === 'abedul' ? 0.09 : 0.13) * (low ? 1.35 : 1) * (0.75 + r() * 0.5), tone(), r); b.position.set(x + (r() - 0.5) * H * 0.12, y + (r() - 0.4) * H * 0.1, z + (r() - 0.5) * H * 0.12); crown.add(b); }
+      else for (const [x, y, z] of tops) for (let k = 0; k < 3; k++) { const a = r() * 6.28; branch([x, y, z], [x + Math.cos(a) * H * 0.1, y + H * 0.08, z + Math.sin(a) * H * 0.1], tr * 0.18); }
+      if (esp === 'frutal' && !bare) for (let i = 0; i < 18; i++) { const [x, y, z] = tops[Math.floor(r() * tops.length)]; const f = F.sphere(H * 0.018, p.fruta || '#c8322a', 0, {outline: 0.02}); f.position.set(x + (r() - 0.5) * H * 0.22, y - H * 0.04 + (r() - 0.5) * H * 0.12, z + (r() - 0.5) * H * 0.22); crown.add(f); }
+      if (esp === 'sauce' && !bare) for (const [x, y, z] of tops) for (let k = 0; k < 7; k++) { const a = r() * 6.28, d = H * 0.12, sx = x + Math.cos(a) * d, sz = z + Math.sin(a) * d; crown.add(F.tube([[sx, y, sz], [sx + Math.cos(a) * 2, y - H * 0.2, sz + Math.sin(a) * 2], [sx + Math.cos(a) * 3, y - H * 0.42, sz + Math.sin(a) * 3]], H * 0.006, tone(), {seg: 8, radial: 4, o: {outline: 0}})); }
+    }
+    g.userData.actions = {viento(ph, k) { crown.rotation.z = Math.sin(ph * 1.1 + 0.4) * 0.025 * k; crown.rotation.x = Math.sin(ph * 0.8) * 0.018 * k; }};
+    g.userData.size = {w: H * 0.6, h: H, d: H * 0.6};
+    return g;
+  }
+
+  /* ---------------------------------------------------------------- animales */
+  // Medidas por especie (unidades; 10 = 1 m): L largo del tronco, R radio del tronco, P patas (hasta la cruz), C cuello,
+  // Hd cabeza, S hocico, cola, color, y rasgos (orejas, cuernos, astas, lana, crin…).
+  const CUADRUPEDOS = {
+    perro: {L: 8.5, R: 1.85, P: 4.4, C: 2.4, Hd: 1.8, S: 1.6, cola: 3.2, color: '#a8784a', orejas: 'caidas', colaArriba: 0.6},
+    gato: {L: 4.6, R: 1.4, P: 2.4, C: 1.1, Hd: 1.4, S: 0.5, cola: 4, color: '#8a8580', orejas: 'gato', colaArriba: 1.2},
+    lobo: {L: 9, R: 2.5, P: 5.2, C: 2.6, Hd: 2.1, S: 1.8, cola: 4.2, color: '#7a7670', orejas: 'tiesas', colaArriba: -0.2},
+    zorro: {L: 6, R: 1.7, P: 3.3, C: 1.8, Hd: 1.6, S: 1.6, cola: 4.8, color: '#c8642a', orejas: 'tiesas', colaArriba: 0, colaGruesa: true, punta: '#f0ece2'},
+    caballo: {L: 17, R: 4.2, P: 9.5, C: 7.5, Hd: 3.2, S: 3.4, cola: 6, color: '#7a4a2a', orejas: 'tiesas', crin: true, cuello: 0.95, cascos: '#2a2420'},
+    vaca: {L: 18, R: 5.2, P: 7.5, C: 3.5, Hd: 3.4, S: 3.2, cuello: 1.15, cola: 7, color: '#efeae0', orejas: 'laterales', cuernos: true, manchas: '#2a2624', ubre: true, cascos: '#2a2420'},
+    ciervo: {L: 12, R: 3, P: 9, C: 5, Hd: 2.4, S: 2.2, cola: 1.6, color: '#9a6a3e', orejas: 'grandes', astas: true, cuello: 0.9, cascos: '#2a2420'},
+    oveja: {L: 10, R: 3.8, P: 4.5, C: 2.2, Hd: 2.1, S: 1.4, cola: 1.5, color: '#f0ebe0', orejas: 'laterales', lana: true, cara: '#2a2624', cascos: '#2a2420'},
+    cerdo: {L: 10, R: 3.6, P: 3.2, C: 1.2, Hd: 2.6, S: 1.2, cola: 1.6, color: '#e8a8a0', orejas: 'caidas', jeta: true, cascos: '#8a5a50'},
+    oso: {L: 15, R: 5.2, P: 7, C: 3, Hd: 3.2, S: 2, cola: 1, color: '#5a3e2a', orejas: 'redondas', patasGruesas: true},
+  };
+  const AVES = {
+    gallina: {L: 3.2, R: 1.6, P: 1.8, C: 1.6, Hd: 0.9, pico: 0.6, color: '#c8743a', cresta: '#d63a2a', ala: 3, cola: 'abanico'},
+    pato: {L: 3.4, R: 1.4, P: 0.9, C: 1.6, Hd: 0.95, pico: 1.0, color: '#f0ebe0', ala: 3.5, picoColor: '#e8a03a', patas: '#e8a03a', picoPlano: true},
+    paloma: {L: 2.6, R: 1.05, P: 0.8, C: 0.9, Hd: 0.7, pico: 0.4, color: '#8a909a', ala: 3.4},
+    gaviota: {L: 3.4, R: 1.15, P: 1.2, C: 1.0, Hd: 0.8, pico: 0.8, color: '#f2f0ea', ala: 7, alaColor: '#9aa2aa', picoColor: '#e8b83a', patas: '#e8b83a'},
+    aguila: {L: 5, R: 1.8, P: 1.6, C: 1.3, Hd: 1.1, pico: 0.9, color: '#5a3e28', ala: 10, cabezaColor: '#f0ebe0', picoColor: '#e8b83a', patas: '#e8b83a', ganchudo: true},
+  };
+  /**
+   * Animal articulado por especie. Cuadrúpedos: perro, gato, lobo, zorro, caballo, vaca, ciervo, oveja, cerdo, oso.
+   * Aves: gallina, pato, paloma, gaviota, aguila. p: {especie, escala (1 = adulto típico), color, color2 (manchas o crin)}.
+   * Articulaciones: cuerpo, cuello, cabeza, cola y, por pata, hombro/cadera y rodilla (pata_di, pata_dd, pata_ti, pata_td y
+   * rodilla_…); las aves, ala_izq/ala_der. Acciones: andar, correr, comer, mirar, respirar, cola (cuadrúpedos); andar,
+   * picotear, aletear, volar (aves). Trae su zancada para w.walk. Patas en y = 0, frente hacia +z.
+   */
+  function animal(p = {}) {
+    const esp = p.especie in AVES ? p.especie : pick(p.especie, Object.keys(CUADRUPEDOS), 'perro');
+    const own = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== null));  // lo no indicado no pisa la especie
+    return esp in AVES ? ave({...AVES[esp], ...own, especie: esp}) : cuadrupedo({...CUADRUPEDOS[esp], ...own, especie: esp});
+  }
+  function cuadrupedo(d) {
+    const s = Number(d.escala) || 1, L = d.L * s, R = d.R * s, P = d.P * s, Hd = d.Hd * s, col = d.color, dark = shade(col, 0.72), o = {outline: 0.04, acabado: d.lana ? 'tela' : null, escala: 3};
+    const root = new T.Group(), body = F.pivot(root, 'cuerpo', 0, P, 0);
+    // Tronco: pecho y cuartos traseros algo más anchos que la barriga.
+    const torso = F.mesh(new T.CapsuleGeometry(R, L - R * 2, 8, 16), col, o); torso.rotation.x = Math.PI / 2; torso.scale.set(d.lana ? 1.15 : 0.92, 1, d.lana ? 1.1 : 1); body.add(torso);
+    const chest = ellipsoid(R * 1.05, R * 1.08, R * 1.1, col, o); chest.position.set(0, R * 0.05, L * 0.3); body.add(chest);
+    const haunch = ellipsoid(R * 1.0, R * 1.05, R * 1.05, col, o); haunch.position.set(0, R * 0.08, -L * 0.3); body.add(haunch);
+    if (d.lana) for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2, b = ellipsoid(R * 0.5, R * 0.45, R * 0.5, shade(col, 0.95 + (i % 3) * 0.04), {outline: 0.03}); b.position.set(Math.cos(a) * R * 0.85, Math.sin(a) * R * 0.75 + R * 0.15, ((i % 5) - 2) * L * 0.16); body.add(b); }
+    if (d.manchas) for (let i = 0; i < 7; i++) { const m = ellipsoid(R * (0.35 + (i % 3) * 0.1), R * 0.3, R * 0.45, d.color2 || d.manchas, {outline: 0}); const a = -0.6 + (i % 4) * 0.5; m.position.set((i % 2 ? 1 : -1) * R * 0.88 * Math.cos(a), R * Math.sin(a) * 0.6 + R * 0.2, (i - 3) * L * 0.11); m.scale.x *= 0.35; body.add(m); }
+    if (d.ubre) { const u = ellipsoid(R * 0.4, R * 0.3, R * 0.4, '#e8b0a8', {outline: 0.03}); u.position.set(0, -R * 0.95, -L * 0.18); body.add(u); }
+    // Patas: muslo y caña con rodilla, pezuña o zarpa.
+    const legR = R * (d.patasGruesas ? 0.42 : 0.3), legs = {};
+    for (const [name, z, x] of [['pata_di', L * 0.36, -R * 0.55], ['pata_dd', L * 0.36, R * 0.55], ['pata_ti', -L * 0.36, -R * 0.55], ['pata_td', -L * 0.36, R * 0.55]]) {
+      const hip = F.pivot(body, name, x, -R * 0.2, z), up = P * 0.52, lo = P - R * 0.2 - up;
+      hip.add(limb(legR * 1.15, legR * 0.85, up, col, o));
+      const knee = F.pivot(hip, 'rodilla_' + name.slice(5), 0, -up, 0); knee.add(limb(legR * 0.8, legR * 0.62, lo, d.cara && false ? dark : col, o));
+      const foot = d.cascos ? F.cyl(legR * 0.75, legR * 0.85, legR * 0.9, d.cascos, 10, -lo + legR * 0.4, {outline: 0.03}) : ellipsoid(legR * 0.85, legR * 0.5, legR * 1.15, shade(col, 0.9), {outline: 0.03});
+      if (!d.cascos) foot.position.set(0, -lo + legR * 0.4, legR * 0.3); knee.add(foot); legs[name] = {hip, knee};
+    }
+    // Cuello y cabeza.
+    const neck = F.pivot(body, 'cuello', 0, R * 0.45, L * 0.42), nl = d.C * s, na = -(d.cuello ?? 0.7);
+    const nm = F.mesh(new T.CapsuleGeometry(R * 0.5, nl, 6, 12), d.crin ? col : col, o); nm.position.set(0, Math.cos(na) * nl * 0.5 + R * 0.1, -Math.sin(na) * nl * 0.5); nm.rotation.x = -na; neck.add(nm);
+    if (d.crin) for (let i = 0; i < 7; i++) { const c = F.box(R * 0.18, R * 0.55, nl * 0.16, d.color2 || '#2a1e16', 0, {outline: 0.02}); const u = i / 6; c.position.set(0, Math.cos(na) * nl * u + R * 0.55, -Math.sin(na) * nl * u - R * 0.2); c.rotation.x = -na; neck.add(c); }
+    const head = F.pivot(neck, 'cabeza', 0, Math.cos(na) * nl + R * 0.3, -Math.sin(na) * nl + R * 0.1);
+    const skull = ellipsoid(Hd * 0.7, Hd * 0.72, Hd * 0.85, d.cara || col, o); head.add(skull);
+    const snout = F.mesh(new T.CapsuleGeometry(Hd * 0.42, Math.max(0.1, d.S * s), 6, 12), d.cara || col, o); snout.rotation.x = Math.PI / 2 + 0.25; snout.position.set(0, -Hd * 0.18, Hd * 0.55 + d.S * s * 0.45); head.add(snout);
+    const nose = d.jeta ? F.cyl(Hd * 0.36, Hd * 0.36, Hd * 0.2, shade(col, 0.85), 14, 0, {outline: 0.03}) : ellipsoid(Hd * 0.2, Hd * 0.16, Hd * 0.14, '#1e1a18', {outline: 0}); if (d.jeta) nose.rotation.x = Math.PI / 2; nose.position.set(0, -Hd * 0.08, Hd * 0.62 + d.S * s * 1.0); head.add(nose);
+    for (const sx of [-1, 1]) {
+      const eye = F.sphere(Hd * 0.11, '#141210', 0, {outline: 0}); eye.position.set(sx * Hd * 0.42, Hd * 0.18, Hd * 0.55); head.add(eye);
+      const glint = F.sphere(Hd * 0.035, '#ffffff', 0, {outline: 0}); glint.position.set(sx * Hd * 0.45, Hd * 0.23, Hd * 0.63); head.add(glint);
+      const ear = d.orejas === 'caidas' ? ellipsoid(Hd * 0.18, Hd * 0.48, Hd * 0.32, dark, {outline: 0.03}) : d.orejas === 'redondas' ? F.sphere(Hd * 0.24, dark, 0, {outline: 0.03}) : F.cone(Hd * (d.orejas === 'grandes' ? 0.3 : 0.22), Hd * (d.orejas === 'grandes' ? 0.75 : d.orejas === 'gato' ? 0.5 : 0.6), d.orejas === 'laterales' ? col : dark, 8, 0, {outline: 0.03});
+      if (d.orejas === 'caidas') ear.position.set(sx * Hd * 0.6, -Hd * 0.05, -Hd * 0.1); else if (d.orejas === 'laterales') { ear.position.set(sx * Hd * 0.85, Hd * 0.25, -Hd * 0.1); ear.rotation.z = -sx * 1.4; } else { ear.position.set(sx * Hd * 0.42, Hd * 0.75, -Hd * 0.15); ear.rotation.z = -sx * 0.25; }
+      head.add(ear);
+      if (d.cuernos) { const h = F.tube([[sx * Hd * 0.45, Hd * 0.55, -Hd * 0.2], [sx * Hd * 0.95, Hd * 0.75, -Hd * 0.1], [sx * Hd * 1.05, Hd * 1.05, Hd * 0.05]], Hd * 0.09, '#e8e0cc', {seg: 8, radial: 6, o: {outline: 0.03}}); head.add(h); }
+      if (d.astas) { const base = [sx * Hd * 0.35, Hd * 0.65, -Hd * 0.1]; const pts = [base, [sx * Hd * 0.9, Hd * 1.6, -Hd * 0.3], [sx * Hd * 1.3, Hd * 2.6, -Hd * 0.1], [sx * Hd * 1.2, Hd * 3.4, Hd * 0.3]]; head.add(F.tube(pts, Hd * 0.07, '#d8c8a8', {seg: 12, radial: 5, o: {outline: 0.03}})); for (const k of [1, 2]) head.add(F.tube([pts[k], [pts[k][0] + sx * Hd * 0.1, pts[k][1] + Hd * 0.9, pts[k][2] + Hd * 0.5]], Hd * 0.05, '#d8c8a8', {seg: 6, radial: 5, o: {outline: 0.03}})); }
+    }
+    // Cola.
+    const tail = F.pivot(body, 'cola', 0, R * 0.55, -L * 0.48), tl = d.cola * s, ta = 0.9 - (d.colaArriba ?? 0.4);
+    const tm = d.colaGruesa ? ellipsoid(R * 0.38, tl * 0.5, R * 0.38, col, o) : F.mesh(new T.CapsuleGeometry(R * (d.lana ? 0.25 : 0.14), tl, 4, 8), col, o);
+    tm.position.set(0, -Math.cos(ta) * tl * 0.5, -Math.sin(ta) * tl * 0.5); tm.rotation.x = -ta + (d.colaGruesa ? 0 : 0); if (d.colaGruesa) tm.rotation.x = -ta; tail.add(tm);
+    if (d.punta) { const pt = F.sphere(R * 0.3, d.punta, 0, {outline: 0.02}); pt.position.set(0, -Math.cos(ta) * tl * 0.98, -Math.sin(ta) * tl * 0.98); tail.add(pt); }
+    // Acciones.
+    // Paso en diagonal: delantera izquierda con trasera derecha y viceversa; la rodilla se dobla cuando la pata vuelve.
+    const swing = (ph, k, amp, speed) => {
+      for (const [n, l] of Object.entries(legs)) {
+        const a = Math.sin(ph * speed + (n === 'pata_di' || n === 'pata_td' ? 0 : Math.PI)), front = n.startsWith('pata_d');
+        l.hip.rotation.x = a * amp * k;
+        l.knee.rotation.x = (front ? -1 : 1) * Math.max(0, front ? a : -a) * amp * 1.3 * k;
+      }
+      body.position.y = P + Math.abs(Math.cos(ph * speed)) * P * 0.03 * k; tail.rotation.z = Math.sin(ph * speed * 0.5) * 0.25 * k;
+    };
+    root.userData.actions = {
+      andar(ph, k) { swing(ph, k, 0.38, 5.5); head.rotation.x = Math.sin(ph * 11) * 0.04 * k; },
+      correr(ph, k) { swing(ph, k, 0.75, 9); body.rotation.x = Math.sin(ph * 9) * 0.06 * k; },
+      comer(ph, k) { neck.rotation.x = 0.9 * k; head.rotation.x = (0.3 + Math.sin(ph * 4) * 0.08) * k; },
+      mirar(ph, k) { neck.rotation.y = Math.sin(ph * 0.8) * 0.5 * k; head.rotation.y = Math.sin(ph * 0.8) * 0.3 * k; },
+      respirar(ph, k) { torso.scale.y = 1 + Math.sin(ph * 2.2) * 0.02 * k; tail.rotation.z = Math.sin(ph * 1.3) * 0.15 * k; },
+      cola(ph, k) { tail.rotation.z = Math.sin(ph * 12) * 0.5 * k; },
+    };
+    root.userData.gaits = {andar: {omega: 5.5, stride: P * 1.1}, correr: {omega: 9, stride: P * 2.6}};
+    root.userData.size = {w: R * 2.2, h: P + R + Hd * 2, d: L + nl + d.S * s + tl * 0.5};
+    return root;
+  }
+  function ave(d) {
+    const s = Number(d.escala) || 1, L = d.L * s, R = d.R * s, P = d.P * s, Hd = d.Hd * s, col = d.color, o = {outline: 0.04};
+    const root = new T.Group(), body = F.pivot(root, 'cuerpo', 0, P + R * 0.8, 0);
+    const torso = ellipsoid(R, R * 0.95, L * 0.5, col, o); torso.rotation.x = -0.25; body.add(torso);
+    const neck = F.pivot(body, 'cuello', 0, R * 0.5, L * 0.32); const nm = F.mesh(new T.CapsuleGeometry(R * 0.38, d.C * s, 4, 10), col, o); nm.position.y = d.C * s * 0.5; nm.rotation.x = 0.25; neck.add(nm);
+    const head = F.pivot(neck, 'cabeza', 0, d.C * s + Hd * 0.3, Hd * 0.2); head.add(ellipsoid(Hd, Hd, Hd * 1.1, d.cabezaColor || col, o));
+    const beakL = d.pico * s;
+    const beak = d.picoPlano ? ellipsoid(Hd * 0.45, Hd * 0.18, beakL * 0.6, d.picoColor || '#e8a03a', {outline: 0.03}) : F.cone(Hd * 0.32, beakL, d.picoColor || '#c8a03a', 8, 0, {outline: 0.03}); if (!d.picoPlano) beak.rotation.x = Math.PI / 2 + (d.ganchudo ? 0.35 : 0.1); beak.position.set(0, -Hd * 0.1, Hd * 0.95 + beakL * 0.45); head.add(beak);
+    for (const sx of [-1, 1]) { const e = F.sphere(Hd * 0.16, '#141210', 0, {outline: 0}); e.position.set(sx * Hd * 0.62, Hd * 0.25, Hd * 0.45); head.add(e); }
+    if (d.cresta) for (let i = 0; i < 3; i++) { const c = F.sphere(Hd * 0.28, d.cresta, 0, {outline: 0.02}); c.position.set(0, Hd * (0.95 + (i === 1 ? 0.15 : 0)), Hd * (0.4 - i * 0.35)); head.add(c); }
+    if (d.cresta) { const w = ellipsoid(Hd * 0.18, Hd * 0.32, Hd * 0.18, d.cresta, {outline: 0.02}); w.position.set(0, -Hd * 0.65, Hd * 0.75); head.add(w); }
+    // Alas plegadas (pivotes para aletear y volar).
+    const wings = {};
+    for (const [name, sx] of [['ala_izq', -1], ['ala_der', 1]]) {
+      const w = F.pivot(body, name, sx * R * 0.85, R * 0.35, L * 0.1), span = d.ala * s;
+      const shape = [[0, 0], [sx * span, -L * 0.15], [sx * span * 0.75, -L * 0.45], [sx * span * 0.2, -L * 0.6], [0, -L * 0.45]];
+      const wm = F.extrude(shape.map(([x, z]) => [x, z]), R * 0.18, d.alaColor || shade(col, 0.85), {bevel: R * 0.05, o: {outline: 0.03}}); wm.rotation.x = Math.PI / 2; w.add(wm);
+      w.rotation.set(0, sx * 1.4, -sx * 0.12); wings[name] = {w, sx};
+    }
+    // Cola.
+    const tail = F.pivot(body, 'cola', 0, R * 0.2, -L * 0.45);
+    if (d.cola === 'abanico') for (let i = 0; i < 5; i++) { const f = ellipsoid(R * 0.18, R * 0.9, R * 0.3, i % 2 ? shade(col, 0.6) : '#2a3a2a', {outline: 0.02}); f.position.set((i - 2) * R * 0.22, R * 0.6, -R * 0.2); f.rotation.z = (i - 2) * 0.25; f.rotation.x = -0.5; tail.add(f); }
+    else { const tf = F.extrude([[-R * 0.5, 0], [R * 0.5, 0], [R * 0.7, -L * 0.4], [-R * 0.7, -L * 0.4]], R * 0.12, shade(col, 0.85), {o: {outline: 0.03}}); tf.rotation.x = Math.PI / 2 - 0.2; tail.add(tf); }
+    // Patas finas con dedos.
+    const legs = {};
+    for (const [name, sx] of [['pata_i', -1], ['pata_d', 1]]) {
+      const hip = F.pivot(body, name, sx * R * 0.4, -R * 0.6, 0); hip.add(limb(R * 0.12, R * 0.1, P + R * 0.2, d.patas || '#c8a03a', {outline: 0.02}));
+      for (const a of [-0.5, 0, 0.5]) { const toe = F.box(R * 0.08, R * 0.06, Hd * 0.9, d.patas || '#c8a03a', 0, {outline: 0}); toe.position.set(Math.sin(a) * Hd * 0.3, -(P + R * 0.2) + R * 0.03, Math.cos(a) * Hd * 0.35); toe.rotation.y = a; hip.add(toe); }
+      legs[name] = hip;
+    }
+    // Plegadas: la envergadura apunta hacia atrás. Al aletear o volar se abren (giro en y) y baten (giro en z).
+    const flap = (ph, k, amp, speed, open = 1) => { for (const {w, sx} of Object.values(wings)) { w.rotation.y = sx * 1.4 * (1 - open * k); w.rotation.z = sx * (Math.sin(ph * speed) * amp - 0.12) * k - sx * 0.12 * (1 - k); } };
+    root.userData.actions = {
+      andar(ph, k) { const a = Math.sin(ph * 8); legs.pata_i.rotation.x = a * 0.5 * k; legs.pata_d.rotation.x = -a * 0.5 * k; neck.position.z = L * 0.32 + Math.sin(ph * 16) * R * 0.15 * k; },
+      picotear(ph, k) { const u = Math.max(0, Math.sin(ph * 4)); neck.rotation.x = u * 1.1 * k; },
+      aletear(ph, k) { flap(ph, k, 0.7, 14, 0.75); },
+      volar(ph, k) { flap(ph, k, 1.1, 9); legs.pata_i.rotation.x = -0.9 * k; legs.pata_d.rotation.x = -0.9 * k; body.position.y = P + R * 0.8 + Math.sin(ph * 9) * R * 0.15 * k; },
+    };
+    root.userData.gaits = {andar: {omega: 8, stride: P * 0.9}};
+    root.userData.size = {w: R * 2 + d.ala * s * 0.3, h: P + R * 2 + d.C * s + Hd * 2, d: L + beakL};
+    return root;
+  }
+
+  F.gen = {human, hull, arbol, animal, HEADWEAR, HAIR, ARBOLES, ANIMALES: [...Object.keys(CUADRUPEDOS), ...Object.keys(AVES)]};
 })();

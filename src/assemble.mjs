@@ -83,7 +83,7 @@ function kitData(job, code) {
   }
   const countries = JSON.parse(fs.readFileSync(path.join(ASSETS, 'countries.json')));
   const [W, H] = job.format === '9:16' ? [1080, 1920] : [1920, 1080];
-  return {width: W, height: H, duration: job.duration, words: job.words, palette: job.art.palette, skies: job.art.skies || {}, look: job.art.look || 'comic', icons, flags, geo, countries};
+  return {width: W, height: H, duration: job.duration, words: job.words, palette: job.art.palette, skies: job.art.skies || {}, look: job.art.look || 'comic', render: job.art.render || {}, calidad: job.calidad || 'alta', icons, flags, geo, countries};
 }
 
 /** Fondo de las escenas: color o degradado de la paleta y, encima, grano procedural (ruido SVG en gris, no tiñe la paleta). */
