@@ -73,6 +73,12 @@ No son modelos fijos: son constructores de calidad que configuras con parámetro
   - **Acciones:** cuadrúpedos `andar`, `correr`, `comer`, `mirar`, `respirar`, `cola`; aves `andar`, `picotear`, `aletear`, `volar`. Trae su zancada: con `w.walk` las patas no patinan.
   - **Ampliarlo:** sillas, collares, cencerros o jinetes se cuelgan de sus articulaciones.
 
+- `f.gen.montana({...})`: cordillera o macizo con crestas, valles erosionados y color por altura y pendiente (pradera, bosque, roca, nieve donde se asienta).
+  - **Parámetros:** `ancho`, `fondo`, `altura` (una montaña real son miles de unidades), `picos` (1 macizo, 3-6 cordillera), `nieve` (0-1, altura relativa donde empieza; `false` sin nieve), `bosque`, `semilla`, `detalle`, `colores {pradera, bosque, roca, nieve}`.
+  - **Ayuda:** `userData.altura(x, z)` da la altura del relieve para posar encima pueblos, árboles o personas. Va al fondo de la escena con `fantasma: true`.
+- Los cuadrúpedos de `f.gen.animal` tienen anatomía real: tronco con grupa, cintura y pecho; cruz; patas delanteras con paletilla y traseras con muslo y corvejón; cuello torneado; hocico que se afila; crin y cola de crines en el caballo. `userData.lomo` es la altura del lomo, donde va la silla.
+- Jinetes: cuelga una persona de `f.gen.human` del `cuerpo` del caballo a la altura de `userData.lomo` y ponle la acción `montar` (muslos abiertos sobre el lomo, piernas colgando, manos con las riendas).
+
 Úsalos SIEMPRE que la pieza sea un árbol, una planta o un animal: un animal hecho con esferas sueltas o un árbol de conos apilados no pasa la mesa.
 
 Ejemplo: `const g = f.gen.human({style: 'real', jacket: '#5b5d3e', bottom: '#4f5236', headwear: 'casco_m1', headwearColor: '#4d5236', backpack: '#6b6648', rifle: true}); return g;`

@@ -407,7 +407,7 @@ const COMMANDS = {
     if (!piece) die(`No existe piezas/${id}.js`);
     const art = artOf(p);
     const studio = {top: '#9fb3c8', mid: '#d5dee8', low: '#eef2f6', fog: '#e3e9ef', sun: '#fff8ee', sunI: 2.6, amb: '#f4f6fb', ambI: 1.5, sea: '#c3cbd3', land: '#c9cfd6', elev: 42, az: 215, haze: 0};
-    const code3d = `const w = K.world3d(root, 0, 2, {ground: 'none', sky: ${JSON.stringify(studio)}});
+    const code3d = `const w = K.world3d(root, 0, 2, {ground: 'none', manchas: false, sky: ${JSON.stringify(studio)}});
 const o = w.add(${JSON.stringify(id)}, {x: 0, z: 0});
 const T = w.THREE, b = new T.Box3().setFromObject(o), s = new T.Vector3(), c = new T.Vector3();
 b.getSize(s); b.getCenter(c);

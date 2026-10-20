@@ -104,6 +104,7 @@ w.formation('avion', 5, {x, z}, {tipo: 'V'|'fila'|'columna'|'rejilla', rotate, y
 w.scatter('roca', 20, {x, z, w, d} | {x, z, r}, {seed, separacion: 1.15, giro: 'azar'});      // reparto sin que se toquen entre sí ni con lo que hay
 w.point(persona, t, destino, {brazo: 'der', hasta});  w.look(persona, t, destino);           // señalar y mirar a una pieza, punto {x,y,z} o [lon, lat]
 w.shake(t, 1);                                                                                  // sacudida de cámara
+w.lago({x, z}, {radio | rx, rz, color, claro, orilla, irregular, seed, giro});  w.rio([{x, z}, …], {ancho, variacion, color, claro, orilla, corriente});  // agua de interior (ver abajo)
 w.decorar('ciudad'|'campo'|'interior', {epoca: 'clasica'|'moderna', radio, manzana, calle, densidad, fondo, seed, colores, skyline: 'baja'|'media'|'alta', trafico: 0-1, peatones: 0-1});  // viste el entorno (ver abajo)
 w.country('fr', t, '#c84d3b');  w.label('Granada', [lon, lat], t, tFin, {style: 'pin'|'city'|'title', color});
 w.route([[lon, lat], …], t, dur, {color, arc: 0});
@@ -118,13 +119,16 @@ w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(
 - Con mapa: la península mide ~600 unidades; `dist` 600-900 enseña España, 150-300 una región. Coordenadas reales [lon, lat].
 - Los objetos de `w.add` son de Three.js: anima `o.position`, `o.rotation` y `o.scale` con `K.tl.add(o.position, {x: [a, b], duration: ms}, K.ms(t))` (SIEMPRE con `duration`).
 - Cielos: solo los que define la dirección de arte de este vídeo (te llegan sus nombres) o un objeto `{top, mid, low, fog, sun, amb, sea, land, elev, az, haze, night}`. Con `fisico: true` (y `turbidez`, `rayleigh`) el cielo es físico: el color sale de la altura del sol (`elev`, `az`), ideal para amaneceres y atardeceres creíbles.
-- Aspecto (`look` de la dirección de arte o de la escena: `K.world3d(root, T0, T1, {look})`): `'comic'` (tres tonos y contorno), `'sa'` (videojuego), `'clean'` o `'realista'` (materiales físicos sin contorno que reflejan el cielo de la escena; con acabados, el metal brilla y el óxido no).
+- Aspecto (`look` de la dirección de arte o de la escena: `K.world3d(root, T0, T1, {look})`): `'comic'` (tres tonos y contorno), `'sa'` (videojuego), `'clean'` o `'realista'` (materiales físicos sin contorno que reflejan el cielo de la escena; con acabados, el metal brilla y el óxido no). En `'realista'`, además, cada superficie varía de tono y de brillo, lo bajo de cada pieza se ensucia (barro y polvo) y el etalonaje sube contraste y saturación.
 - Imagen final (automático): supermuestreo, oclusión ambiental (sombra en rincones y uniones), resplandor de lo que brilla, etalonaje y suavizado. La dirección de arte lo ajusta con `arte.render = {supermuestreo: 1.5, ao: 0.85, bloom: 0.25, grano: 0.022, contraste: 1.04, saturacion: 1.05, calidez: 0}` (0 desactiva cada efecto). La auditoría dibuja sin él, para ir rápido.
 - Encuadra SIEMPRE con `w.frame`: el protagonista grande y reconocible, nunca diminuto en un plano vacío. Alterna tipos de plano y ángulos entre escenas; en una escena de más de 5 s, al menos dos encuadres.
 - Luz: nada de escenas en penumbra. De noche o con tormenta, `exposure` 1.4-1.8, cielo de la dirección con luna o relámpagos y el protagonista con colores que destaquen; el contraluz automático recorta las siluetas.
 - Noche (cielo con `night: true`): el motor ya baja el ambiente y enfría la luna, oscurece los suelos de la decoración y enciende farolas (halo y charco de luz en el suelo), ventanas de los edificios de fondo, faros, pilotos y semáforos. Las piezas del reparto conservan su color: dales luces propias (materiales con `emissive`) si deben brillar.
 - Vertical: el protagonista en el centro de la pantalla (w.frame ya lo coloca); arriba, titulares; abajo, libre para subtítulos.
 - Mar y costa: usa `ocean` y `terrain`, nunca un plano liso de color. Barcos y lanchas flotan con `w.float`.
+- Lagos, charcas y ríos: SIEMPRE `w.lago` y `w.rio` (reflejo del cielo, rizo que se mueve, agua más clara en la orilla, franja de tierra húmeda; el río corre del primer punto al último). Nunca un disco o una cinta azul plana. Llámalos ANTES de `w.decorar`: la decoración no pone hierba ni árboles dentro del agua.
+- Bruma baja (`bruma: 0-1` o `{densidad, altura, color}` en `K.world3d` o en el cielo): niebla a ras de suelo que funde lo lejano y deja limpio lo cercano; amaneceres, valles, polvo.
+- Montañas al fondo: pieza con `f.gen.montana` (ver el taller) colocada lejos con `fantasma: true`.
 - Lo que el motor ya hace solo (no lo programes a mano):
   - **Separar piezas:** `w.add` aparta lo que nace atravesando otra pieza y avisa (`separar: false` para desactivarlo, `fantasma: true` para lo que puede cruzarse).
   - **Terreno:** lo que va apoyado sigue el terreno aunque se mueva (`suelo: false` para desactivarlo).
@@ -140,7 +144,7 @@ w.attach(html, objeto3D, t, tFin, {y});  w.onUpdate((t) => {…});  w.seaHeight(
     - farolas de la época, árboles, bancos, bocas de incendio y papeleras;
     - vida urbana: coches que circulan (solo por calles despejadas de punta a punta y en una orientación, así nunca se cruzan), coches aparcados junto al bordillo, autobuses y taxis (moderna), semáforos en los cruces (moderna) y peatones que andan por las aceras con su zancada. `trafico` y `peatones` (0-1, por defecto `densidad`) los regulan; 0 los quita;
     - edificios de fondo de cinco tipos (cristal, oficinas y viviendas en `'moderna'`; ladrillo y piedra en `'clasica'`), con ventanas en rejilla por plantas, planta baja con comercios y toldos, cornisa, retranqueos en las torres y azotea con depósitos, máquinas o antenas. `skyline: 'baja'` (6-20 m), `'media'` (10-40 m, alguna torre; por defecto) o `'alta'` (rascacielos).
-  - **`'campo'`:** hierba con miles de matas altas que se mecen con el viento, parcelas, camino, vallas, árboles del generador (frondoso, abedul y pino, que se mecen), arbustos, piedras y lomas. `colores.estacion` (`'otono'`, `'invierno'`…) cambia el color de los árboles.
+  - **`'campo'`:** manchas a gran escala (zonas secas, tierra, verde oscuro), arboledas en el horizonte, hierba con miles de matas altas que se mecen con el viento, parcelas, camino, vallas, árboles del generador (frondoso, abedul y pino, que se mecen), arbustos, piedras y lomas. `colores.estacion` (`'otono'`, `'invierno'`…) cambia el color de los árboles.
   - **`'interior'`:** tarima, alfombra y paredes con zócalo, ventanas y cuadros hacia −z.
 
   La decoración rodea lo que ya hay. Las calles solo las desvían las piezas grandes, y el mobiliario y los coches aparcados cuentan como obstáculo; los coches que circulan los vigila el auditor (si una persona cruza su carril con `w.walk`, avisa del choque: pon `trafico: 0` o aparta la ruta). El mobiliario que se interpone entre la cámara y lo que mira se oculta solo. Si falta, el auditor avisa con «suelo vacío».

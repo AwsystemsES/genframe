@@ -34,7 +34,7 @@
    * hair: {style, color}, beard: color|null, glasses, top, jacket: color|null, jacketLength: 'corta'|'larga', bottom, skirt,
    * shoes, belt, tie, buttons, headwear, headwearColor, backpack: color|null, rifle, sling, gloves, badge: color|null}
    * Articulaciones: cadera, columna, cuello, cabeza, hombro_izq/der, codo_izq/der, mano_izq/der, muslo_izq/der,
-   * rodilla_izq/der, tobillo_izq/der. Acciones: respirar, andar, correr, hablar, saludar.
+   * rodilla_izq/der, tobillo_izq/der. Acciones: respirar, andar, correr, hablar, saludar, montar (sentado a caballo).
    */
   function human(p = {}) {
     const H = clamp(Number(p.height) || 18, 4, 40);
@@ -207,6 +207,13 @@
       correr_agachado(ph, k) { gait(ph, k, 0.7, 0.5, 10); set('cuello', 'x', -0.3 * k); },
       hablar(ph, k) { set('cabeza', 'x', Math.sin(ph * 2.3) * 0.06 * k); set('hombro_der', 'x', (-0.5 + Math.sin(ph * 1.7) * 0.25) * k); set('codo_der', 'x', (-0.9 + Math.sin(ph * 3.1) * 0.3) * k); },
       saludar(ph, k) { set('hombro_der', 'z', -2.6 * k); set('codo_der', 'z', Math.sin(ph * 7) * 0.4 * k); },
+      // Sentado a caballo: muslos hacia delante y abiertos, piernas colgando, manos delante con las riendas; se mece al paso.
+      montar(ph, k) { const sx = (n) => Math.sign(J[n].position.x || (n.endsWith('izq') ? -1 : 1));
+        for (const n of ['muslo_izq', 'muslo_der']) { set(n, 'x', -1.35 * k); set(n, 'z', sx(n) * 0.62 * k); }
+        set('rodilla_izq', 'x', 1.35 * k); set('rodilla_der', 'x', 1.35 * k);
+        for (const n of ['hombro_izq', 'hombro_der']) set(n, 'x', -0.55 * k);
+        set('codo_izq', 'x', -0.9 * k); set('codo_der', 'x', -0.9 * k);
+        set('columna', 'x', (0.05 + Math.sin(ph * 11) * 0.03) * k); },
     };
     root.userData.size = {w: shoulderW * 1.3, h: H, d: H * 0.18};
     // Zancada de cada paso (la usa w.walk para que los pies no patinen): omega = rad/s del ciclo, stride = avance por ciclo.
@@ -421,67 +428,106 @@
     const own = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== null));  // lo no indicado no pisa la especie
     return esp in AVES ? ave({...AVES[esp], ...own, especie: esp}) : cuadrupedo({...CUADRUPEDOS[esp], ...own, especie: esp});
   }
+  /** Pieza torneada a lo largo de z: perfil [[u (0 = atrás, 1 = delante), radio], …] interpolado suave, de longitud L. */
+  const tornoZ = (perfil, L, color, o, {ancho = 1, alto = 1, seg = 18} = {}) => {
+    const pts = [], N = 26;
+    for (let i = 0; i <= N; i++) { const u = i / N; let k = 0; while (k < perfil.length - 2 && perfil[k + 1][0] < u) k++; const [u0, r0] = perfil[k], [u1, r1] = perfil[k + 1], t = K.clamp((u - u0) / Math.max(1e-6, u1 - u0), 0, 1), sm = t * t * (3 - 2 * t); pts.push(new T.Vector2(Math.max(0.001, r0 + (r1 - r0) * sm), -L / 2 + u * L)); }
+    const geo = new T.LatheGeometry(pts, seg); geo.rotateX(Math.PI / 2);
+    const m = F.mesh(geo, color, o); m.scale.set(ancho, alto, 1); return m;
+  };
+  /** Segmento de pata torneado que cuelga de su articulación (y = 0) hacia abajo: radio de arriba a abajo con un músculo. */
+  const segmento = (r1, r2, len, color, o, musculo = 0.25) => {
+    const pts = []; for (let i = 0; i <= 10; i++) { const u = i / 10, bulge = Math.sin(Math.min(1, u * 1.6) * Math.PI) * musculo * r1; pts.push(new T.Vector2(Math.max(0.01, r1 + (r2 - r1) * u + bulge), -u * len)); }
+    pts.unshift(new T.Vector2(0.001, r1 * 0.3)); pts.push(new T.Vector2(0.001, -len - r2 * 0.3));
+    return F.mesh(new T.LatheGeometry(pts, 12), color, o);
+  };
   function cuadrupedo(d) {
     const s = Number(d.escala) || 1, L = d.L * s, R = d.R * s, P = d.P * s, Hd = d.Hd * s, col = d.color, dark = shade(col, 0.72), o = {outline: 0.04, acabado: d.lana ? 'tela' : null, escala: 3};
+    const ungulado = !!d.cascos, hair = d.color2 || shade(col, 0.45);
     const root = new T.Group(), body = F.pivot(root, 'cuerpo', 0, P, 0);
-    // Tronco: pecho y cuartos traseros algo más anchos que la barriga.
-    const torso = F.mesh(new T.CapsuleGeometry(R, L - R * 2, 8, 16), col, o); torso.rotation.x = Math.PI / 2; torso.scale.set(d.lana ? 1.15 : 0.92, 1, d.lana ? 1.1 : 1); body.add(torso);
-    const chest = ellipsoid(R * 1.05, R * 1.08, R * 1.1, col, o); chest.position.set(0, R * 0.05, L * 0.3); body.add(chest);
-    const haunch = ellipsoid(R * 1.0, R * 1.05, R * 1.05, col, o); haunch.position.set(0, R * 0.08, -L * 0.3); body.add(haunch);
-    if (d.lana) for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2, b = ellipsoid(R * 0.5, R * 0.45, R * 0.5, shade(col, 0.95 + (i % 3) * 0.04), {outline: 0.03}); b.position.set(Math.cos(a) * R * 0.85, Math.sin(a) * R * 0.75 + R * 0.15, ((i % 5) - 2) * L * 0.16); body.add(b); }
-    if (d.manchas) for (let i = 0; i < 7; i++) { const m = ellipsoid(R * (0.35 + (i % 3) * 0.1), R * 0.3, R * 0.45, d.color2 || d.manchas, {outline: 0}); const a = -0.6 + (i % 4) * 0.5; m.position.set((i % 2 ? 1 : -1) * R * 0.88 * Math.cos(a), R * Math.sin(a) * 0.6 + R * 0.2, (i - 3) * L * 0.11); m.scale.x *= 0.35; body.add(m); }
+    // Tronco torneado: grupa redonda, cintura, costillar y pecho; más alto que ancho.
+    const torso = tornoZ([[0, 0.12], [0.06, 0.72], [0.18, 1.0], [0.42, 0.86], [0.68, 1.04], [0.86, 0.98], [0.97, 0.62], [1, 0.2]].map(([u, r]) => [u, r * R]), L + R * 0.6, col, o, {ancho: d.lana ? 1.1 : 0.84, alto: 1.02});
+    body.add(torso);
+    // Cruz (sobre los hombros) y vientre algo caído.
+    const withers = ellipsoid(R * 0.55, R * 0.42, R * 0.9, col, o); withers.position.set(0, R * 0.62, L * 0.28); body.add(withers);
+    const belly = ellipsoid(R * 0.78, R * 0.6, L * 0.3, col, o); belly.position.set(0, -R * 0.38, 0); body.add(belly);
+    if (d.lana) for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2, b = ellipsoid(R * 0.5, R * 0.45, R * 0.5, shade(col, 0.95 + (i % 3) * 0.04), {outline: 0.03}); b.position.set(Math.cos(a) * R * 0.9, Math.sin(a) * R * 0.8 + R * 0.1, ((i % 6) - 2.5) * L * 0.15); body.add(b); }
+    if (d.manchas) for (let i = 0; i < 7; i++) { const m = ellipsoid(R * (0.35 + (i % 3) * 0.1), R * 0.3, R * 0.45, d.color2 || d.manchas, {outline: 0}); const a = -0.6 + (i % 4) * 0.5; m.position.set((i % 2 ? 1 : -1) * R * 0.8 * Math.cos(a), R * Math.sin(a) * 0.6 + R * 0.2, (i - 3) * L * 0.11); m.scale.x *= 0.35; body.add(m); }
     if (d.ubre) { const u = ellipsoid(R * 0.4, R * 0.3, R * 0.4, '#e8b0a8', {outline: 0.03}); u.position.set(0, -R * 0.95, -L * 0.18); body.add(u); }
-    // Patas: muslo y caña con rodilla, pezuña o zarpa.
-    const legR = R * (d.patasGruesas ? 0.42 : 0.3), legs = {};
-    for (const [name, z, x] of [['pata_di', L * 0.36, -R * 0.55], ['pata_dd', L * 0.36, R * 0.55], ['pata_ti', -L * 0.36, -R * 0.55], ['pata_td', -L * 0.36, R * 0.55]]) {
-      const hip = F.pivot(body, name, x, -R * 0.2, z), up = P * 0.52, lo = P - R * 0.2 - up;
-      hip.add(limb(legR * 1.15, legR * 0.85, up, col, o));
-      const knee = F.pivot(hip, 'rodilla_' + name.slice(5), 0, -up, 0); knee.add(limb(legR * 0.8, legR * 0.62, lo, d.cara && false ? dark : col, o));
-      const foot = d.cascos ? F.cyl(legR * 0.75, legR * 0.85, legR * 0.9, d.cascos, 10, -lo + legR * 0.4, {outline: 0.03}) : ellipsoid(legR * 0.85, legR * 0.5, legR * 1.15, shade(col, 0.9), {outline: 0.03});
-      if (!d.cascos) foot.position.set(0, -lo + legR * 0.4, legR * 0.3); knee.add(foot); legs[name] = {hip, knee};
+    // Patas: delanteras rectas (antebrazo y caña); traseras con muslo hacia atrás y corvejón, como en la realidad.
+    const legR = R * (d.patasGruesas ? 0.4 : ungulado ? 0.24 : 0.27), legs = {}, attach = -R * 0.25, legLen = P + attach, hindA = ungulado ? 0.32 : 0.42;
+    for (const [name, z, x] of [['pata_di', L * 0.34, -R * 0.5], ['pata_dd', L * 0.34, R * 0.5], ['pata_ti', -L * 0.36, -R * 0.52], ['pata_td', -L * 0.36, R * 0.52]]) {
+      const front = name.startsWith('pata_d'), hip = F.pivot(body, name, x, attach, z);
+      const lo = legLen * (front ? 0.46 : 0.42), up = front ? legLen - lo - legR * 0.6 : (legLen - lo - legR * 0.6) / Math.cos(hindA);
+      if (!front) { const th = ellipsoid(legR * 2.1, legR * 2.6, legR * 2.0, col, o); th.position.set(0, -legR * 0.8, 0); hip.add(th); }  // muslo con masa
+      else { const sh = ellipsoid(legR * 1.6, legR * 2.2, legR * 1.5, col, o); sh.position.set(0, -legR * 0.6, legR * 0.2); hip.add(sh); }  // paletilla
+      hip.add(segmento(legR * (front ? 1.25 : 1.45), legR * 0.72, up, col, o, front ? 0.18 : 0.3));
+      const knee = F.pivot(hip, 'rodilla_' + name.slice(5), 0, -up, 0);
+      knee.add(F.sphere(legR * 0.78, col, 0, o));
+      knee.add(segmento(legR * 0.66, legR * 0.55, lo, ungulado ? shade(col, 0.92) : col, o, 0.05));
+      if (ungulado) {
+        const fet = F.sphere(legR * 0.66, shade(col, 0.9), -lo, {outline: 0.03}); knee.add(fet);
+        const hoof = F.cyl(legR * 0.62, legR * 0.82, legR * 0.9, d.cascos, 10, -lo - legR * 0.55, {outline: 0.03}); hoof.position.z = legR * 0.1; knee.add(hoof);
+      } else { const paw = ellipsoid(legR * 0.85, legR * 0.5, legR * 1.2, shade(col, 0.9), {outline: 0.03}); paw.position.set(0, -lo - legR * 0.1, legR * 0.35); knee.add(paw); }
+      const h0 = front ? 0 : hindA, k0 = front ? 0 : -hindA;
+      hip.rotation.x = h0; knee.rotation.x = k0; legs[name] = {hip, knee, h0, k0, front};
     }
-    // Cuello y cabeza.
-    const neck = F.pivot(body, 'cuello', 0, R * 0.45, L * 0.42), nl = d.C * s, na = -(d.cuello ?? 0.7);
-    const nm = F.mesh(new T.CapsuleGeometry(R * 0.5, nl, 6, 12), d.crin ? col : col, o); nm.position.set(0, Math.cos(na) * nl * 0.5 + R * 0.1, -Math.sin(na) * nl * 0.5); nm.rotation.x = -na; neck.add(nm);
-    if (d.crin) for (let i = 0; i < 7; i++) { const c = F.box(R * 0.18, R * 0.55, nl * 0.16, d.color2 || '#2a1e16', 0, {outline: 0.02}); const u = i / 6; c.position.set(0, Math.cos(na) * nl * u + R * 0.55, -Math.sin(na) * nl * u - R * 0.2); c.rotation.x = -na; neck.add(c); }
-    const head = F.pivot(neck, 'cabeza', 0, Math.cos(na) * nl + R * 0.3, -Math.sin(na) * nl + R * 0.1);
-    const skull = ellipsoid(Hd * 0.7, Hd * 0.72, Hd * 0.85, d.cara || col, o); head.add(skull);
-    const snout = F.mesh(new T.CapsuleGeometry(Hd * 0.42, Math.max(0.1, d.S * s), 6, 12), d.cara || col, o); snout.rotation.x = Math.PI / 2 + 0.25; snout.position.set(0, -Hd * 0.18, Hd * 0.55 + d.S * s * 0.45); head.add(snout);
-    const nose = d.jeta ? F.cyl(Hd * 0.36, Hd * 0.36, Hd * 0.2, shade(col, 0.85), 14, 0, {outline: 0.03}) : ellipsoid(Hd * 0.2, Hd * 0.16, Hd * 0.14, '#1e1a18', {outline: 0}); if (d.jeta) nose.rotation.x = Math.PI / 2; nose.position.set(0, -Hd * 0.08, Hd * 0.62 + d.S * s * 1.0); head.add(nose);
+    // Cuello torneado (ancho en la base, estrecho arriba) y cabeza.
+    const neck = F.pivot(body, 'cuello', 0, R * 0.5, L * 0.42), nl = d.C * s, tilt = d.cuello ?? 0.7;
+    const npts = []; for (let i = 0; i <= 8; i++) { const u = i / 8; npts.push(new T.Vector2(R * (0.68 - 0.3 * u), u * nl)); }
+    npts.unshift(new T.Vector2(0.001, -R * 0.2)); npts.push(new T.Vector2(0.001, nl + R * 0.25));
+    const nm = F.mesh(new T.LatheGeometry(npts, 14), col, o); nm.scale.x = 0.78; nm.rotation.x = tilt; neck.add(nm);
+    const ny = Math.cos(tilt) * nl, nz = Math.sin(tilt) * nl;
+    if (d.crin) { for (let i = 0; i <= 9; i++) { const u = i / 9, c = ellipsoid(R * 0.12, R * 0.38, nl * 0.13, hair, {outline: 0.02}); c.position.set(0, Math.cos(tilt) * nl * u + R * (0.55 - 0.2 * u), Math.sin(tilt) * nl * u - R * 0.42 * (1 - u) - R * 0.12); c.rotation.x = tilt - 0.35; c.rotation.z = (i % 2 ? 1 : -1) * 0.12; neck.add(c); } }
+    const head = F.pivot(neck, 'cabeza', 0, ny + R * 0.12, nz + R * 0.12);
+    head.rotation.x = 0.35 + (ungulado ? 0.25 : 0);
+    const skull = ellipsoid(Hd * 0.68, Hd * 0.72, Hd * 0.82, d.cara || col, o); head.add(skull);
+    // Hocico torneado que se afila hacia la nariz (largo en caballos y ciervos, corto en gatos y osos).
+    const S = d.S * s, mpts = []; for (let i = 0; i <= 8; i++) { const u = i / 8; mpts.push(new T.Vector2(Hd * (0.55 - 0.2 * u) * (1 - 0.15 * u * u), u * S)); }
+    mpts.unshift(new T.Vector2(0.001, -Hd * 0.1)); mpts.push(new T.Vector2(0.001, S + Hd * 0.32));
+    const muzzle = F.mesh(new T.LatheGeometry(mpts, 14), d.cara || col, o); muzzle.rotation.x = Math.PI / 2; muzzle.scale.set(0.82, 1, 1); muzzle.position.set(0, -Hd * 0.18, Hd * 0.45); head.add(muzzle);
+    if (ungulado || d.especie === 'oso') { const jaw = ellipsoid(Hd * 0.45, Hd * 0.3, Hd * 0.6, d.cara || col, o); jaw.position.set(0, -Hd * 0.55, Hd * 0.25); head.add(jaw); }
+    const tipZ = Hd * 0.45 + S + Hd * 0.18;
+    if (d.jeta) { const nose = F.cyl(Hd * 0.36, Hd * 0.36, Hd * 0.2, shade(col, 0.85), 14, 0, {outline: 0.03}); nose.rotation.x = Math.PI / 2; nose.position.set(0, -Hd * 0.18, tipZ); head.add(nose); }
+    else if (ungulado) for (const sx of [-1, 1]) { const n = ellipsoid(Hd * 0.09, Hd * 0.12, Hd * 0.06, '#1e1a18', {outline: 0}); n.position.set(sx * Hd * 0.2, -Hd * 0.12, tipZ - Hd * 0.05); head.add(n); }
+    else { const n = ellipsoid(Hd * 0.2, Hd * 0.15, Hd * 0.13, '#1e1a18', {outline: 0}); n.position.set(0, -Hd * 0.06, tipZ); head.add(n); }
     for (const sx of [-1, 1]) {
-      const eye = F.sphere(Hd * 0.11, '#141210', 0, {outline: 0}); eye.position.set(sx * Hd * 0.42, Hd * 0.18, Hd * 0.55); head.add(eye);
-      const glint = F.sphere(Hd * 0.035, '#ffffff', 0, {outline: 0}); glint.position.set(sx * Hd * 0.45, Hd * 0.23, Hd * 0.63); head.add(glint);
-      const ear = d.orejas === 'caidas' ? ellipsoid(Hd * 0.18, Hd * 0.48, Hd * 0.32, dark, {outline: 0.03}) : d.orejas === 'redondas' ? F.sphere(Hd * 0.24, dark, 0, {outline: 0.03}) : F.cone(Hd * (d.orejas === 'grandes' ? 0.3 : 0.22), Hd * (d.orejas === 'grandes' ? 0.75 : d.orejas === 'gato' ? 0.5 : 0.6), d.orejas === 'laterales' ? col : dark, 8, 0, {outline: 0.03});
-      if (d.orejas === 'caidas') ear.position.set(sx * Hd * 0.6, -Hd * 0.05, -Hd * 0.1); else if (d.orejas === 'laterales') { ear.position.set(sx * Hd * 0.85, Hd * 0.25, -Hd * 0.1); ear.rotation.z = -sx * 1.4; } else { ear.position.set(sx * Hd * 0.42, Hd * 0.75, -Hd * 0.15); ear.rotation.z = -sx * 0.25; }
+      const eye = F.sphere(Hd * 0.11, '#141210', 0, {outline: 0}); eye.position.set(sx * Hd * 0.5, Hd * 0.18, Hd * 0.42); head.add(eye);
+      const lid = ellipsoid(Hd * 0.15, Hd * 0.06, Hd * 0.13, shade(col, 0.85), {outline: 0}); lid.position.set(sx * Hd * 0.5, Hd * 0.27, Hd * 0.42); head.add(lid);
+      const glint = F.sphere(Hd * 0.035, '#ffffff', 0, {outline: 0}); glint.position.set(sx * Hd * 0.55, Hd * 0.22, Hd * 0.5); head.add(glint);
+      const ear = d.orejas === 'caidas' ? ellipsoid(Hd * 0.18, Hd * 0.48, Hd * 0.32, dark, {outline: 0.03}) : d.orejas === 'redondas' ? F.sphere(Hd * 0.24, dark, 0, {outline: 0.03}) : F.cone(Hd * (d.orejas === 'grandes' ? 0.3 : 0.2), Hd * (d.orejas === 'grandes' ? 0.75 : d.orejas === 'gato' ? 0.5 : 0.62), d.orejas === 'laterales' ? col : dark, 8, 0, {outline: 0.03});
+      if (d.orejas === 'caidas') ear.position.set(sx * Hd * 0.6, -Hd * 0.05, -Hd * 0.1); else if (d.orejas === 'laterales') { ear.position.set(sx * Hd * 0.85, Hd * 0.25, -Hd * 0.1); ear.rotation.z = -sx * 1.4; } else { ear.position.set(sx * Hd * 0.38, Hd * 0.78, -Hd * 0.2); ear.rotation.z = -sx * 0.2; ear.rotation.x = -0.2; }
       head.add(ear);
-      if (d.cuernos) { const h = F.tube([[sx * Hd * 0.45, Hd * 0.55, -Hd * 0.2], [sx * Hd * 0.95, Hd * 0.75, -Hd * 0.1], [sx * Hd * 1.05, Hd * 1.05, Hd * 0.05]], Hd * 0.09, '#e8e0cc', {seg: 8, radial: 6, o: {outline: 0.03}}); head.add(h); }
+      if (d.cuernos) head.add(F.tube([[sx * Hd * 0.45, Hd * 0.55, -Hd * 0.2], [sx * Hd * 0.95, Hd * 0.75, -Hd * 0.1], [sx * Hd * 1.05, Hd * 1.05, Hd * 0.05]], Hd * 0.09, '#e8e0cc', {seg: 8, radial: 6, o: {outline: 0.03}}));
       if (d.astas) { const base = [sx * Hd * 0.35, Hd * 0.65, -Hd * 0.1]; const pts = [base, [sx * Hd * 0.9, Hd * 1.6, -Hd * 0.3], [sx * Hd * 1.3, Hd * 2.6, -Hd * 0.1], [sx * Hd * 1.2, Hd * 3.4, Hd * 0.3]]; head.add(F.tube(pts, Hd * 0.07, '#d8c8a8', {seg: 12, radial: 5, o: {outline: 0.03}})); for (const k of [1, 2]) head.add(F.tube([pts[k], [pts[k][0] + sx * Hd * 0.1, pts[k][1] + Hd * 0.9, pts[k][2] + Hd * 0.5]], Hd * 0.05, '#d8c8a8', {seg: 6, radial: 5, o: {outline: 0.03}})); }
     }
-    // Cola.
-    const tail = F.pivot(body, 'cola', 0, R * 0.55, -L * 0.48), tl = d.cola * s, ta = 0.9 - (d.colaArriba ?? 0.4);
-    const tm = d.colaGruesa ? ellipsoid(R * 0.38, tl * 0.5, R * 0.38, col, o) : F.mesh(new T.CapsuleGeometry(R * (d.lana ? 0.25 : 0.14), tl, 4, 8), col, o);
-    tm.position.set(0, -Math.cos(ta) * tl * 0.5, -Math.sin(ta) * tl * 0.5); tm.rotation.x = -ta + (d.colaGruesa ? 0 : 0); if (d.colaGruesa) tm.rotation.x = -ta; tail.add(tm);
+    if (d.crin) { const fl = ellipsoid(Hd * 0.2, Hd * 0.35, Hd * 0.12, hair, {outline: 0.02}); fl.position.set(0, Hd * 0.55, Hd * 0.25); fl.rotation.x = 0.5; head.add(fl); }
+    // Cola: de crines (caballo) en mechones que caen, gruesa (zorro) o torneada.
+    const tail = F.pivot(body, 'cola', 0, R * 0.62, -L * 0.5 - R * 0.2), tl = d.cola * s, ta = 0.9 - (d.colaArriba ?? 0.4);
+    if (d.crin) { for (let i = 0; i < 4; i++) { const sx = (i - 1.5) * R * 0.09; tail.add(F.tube([[sx, 0, 0], [sx * 1.4, -tl * 0.35, -R * 0.45], [sx * 2, -tl * 0.75, -R * 0.4], [sx * 2.4, -tl, -R * 0.25]], R * 0.12, hair, {seg: 12, radial: 6, o: {outline: 0.02}})); } }
+    else if (d.colaGruesa) { const tm = ellipsoid(R * 0.38, tl * 0.5, R * 0.38, col, o); tm.position.set(0, -Math.cos(ta) * tl * 0.5, -Math.sin(ta) * tl * 0.5); tm.rotation.x = -ta; tail.add(tm); }
+    else { const tpts = []; for (let i = 0; i <= 6; i++) { const u = i / 6; tpts.push(new T.Vector2(R * (d.lana ? 0.28 : 0.16) * (1 - 0.6 * u), -u * tl)); } tpts.push(new T.Vector2(0.001, -tl - R * 0.05)); const tm = F.mesh(new T.LatheGeometry(tpts, 8), col, o); tm.rotation.x = ta; tail.add(tm); }
     if (d.punta) { const pt = F.sphere(R * 0.3, d.punta, 0, {outline: 0.02}); pt.position.set(0, -Math.cos(ta) * tl * 0.98, -Math.sin(ta) * tl * 0.98); tail.add(pt); }
-    // Acciones.
-    // Paso en diagonal: delantera izquierda con trasera derecha y viceversa; la rodilla se dobla cuando la pata vuelve.
+    // Acciones: paso en diagonal; la rodilla delantera se dobla hacia atrás y el corvejón trasero hacia delante.
     const swing = (ph, k, amp, speed) => {
       for (const [n, l] of Object.entries(legs)) {
-        const a = Math.sin(ph * speed + (n === 'pata_di' || n === 'pata_td' ? 0 : Math.PI)), front = n.startsWith('pata_d');
-        l.hip.rotation.x = a * amp * k;
-        l.knee.rotation.x = (front ? -1 : 1) * Math.max(0, front ? a : -a) * amp * 1.3 * k;
+        const a = Math.sin(ph * speed + (n === 'pata_di' || n === 'pata_td' ? 0 : Math.PI));
+        l.hip.rotation.x = l.h0 + a * amp * k;
+        l.knee.rotation.x = l.k0 + (l.front ? 1 : -1) * Math.max(0, l.front ? -a : a) * amp * 1.4 * k;
       }
-      body.position.y = P + Math.abs(Math.cos(ph * speed)) * P * 0.03 * k; tail.rotation.z = Math.sin(ph * speed * 0.5) * 0.25 * k;
+      body.position.y = P + Math.abs(Math.cos(ph * speed)) * P * 0.025 * k; tail.rotation.x = Math.sin(ph * speed * 0.5) * 0.1 * k;
     };
     root.userData.actions = {
-      andar(ph, k) { swing(ph, k, 0.38, 5.5); head.rotation.x = Math.sin(ph * 11) * 0.04 * k; },
-      correr(ph, k) { swing(ph, k, 0.75, 9); body.rotation.x = Math.sin(ph * 9) * 0.06 * k; },
-      comer(ph, k) { neck.rotation.x = 0.9 * k; head.rotation.x = (0.3 + Math.sin(ph * 4) * 0.08) * k; },
-      mirar(ph, k) { neck.rotation.y = Math.sin(ph * 0.8) * 0.5 * k; head.rotation.y = Math.sin(ph * 0.8) * 0.3 * k; },
-      respirar(ph, k) { torso.scale.y = 1 + Math.sin(ph * 2.2) * 0.02 * k; tail.rotation.z = Math.sin(ph * 1.3) * 0.15 * k; },
+      andar(ph, k) { swing(ph, k, 0.34, 5.5); head.rotation.y = Math.sin(ph * 5.5) * 0.04 * k; neck.rotation.x = Math.sin(ph * 11) * 0.04 * k; },
+      correr(ph, k) { swing(ph, k, 0.72, 9); body.rotation.x = Math.sin(ph * 9) * 0.06 * k; neck.rotation.x = Math.sin(ph * 9 + 1) * 0.12 * k; },
+      comer(ph, k) { neck.rotation.x = 1.0 * k; head.rotation.x = 0.35 + (ungulado ? 0.25 : 0) + (0.25 + Math.sin(ph * 4) * 0.08) * k; },
+      mirar(ph, k) { neck.rotation.y = Math.sin(ph * 0.8) * 0.45 * k; head.rotation.y = Math.sin(ph * 0.8) * 0.3 * k; },
+      respirar(ph, k) { torso.scale.y = 1.02 + Math.sin(ph * 2.2) * 0.015 * k; tail.rotation.z = Math.sin(ph * 1.3) * 0.12 * k; },
       cola(ph, k) { tail.rotation.z = Math.sin(ph * 12) * 0.5 * k; },
     };
     root.userData.gaits = {andar: {omega: 5.5, stride: P * 1.1}, correr: {omega: 9, stride: P * 2.6}};
-    root.userData.size = {w: R * 2.2, h: P + R + Hd * 2, d: L + nl + d.S * s + tl * 0.5};
+    root.userData.size = {w: R * 2.2, h: P + R + Hd * 2, d: L + nl + S + tl * 0.5};
+    root.userData.lomo = P + R * 0.95;  // altura del lomo: ahí va la silla (y un jinete con la acción «montar»)
     return root;
   }
   function ave(d) {
@@ -527,5 +573,57 @@
     return root;
   }
 
-  F.gen = {human, hull, arbol, animal, HEADWEAR, HAIR, ARBOLES, ANIMALES: [...Object.keys(CUADRUPEDOS), ...Object.keys(AVES)]};
+  /* ---------------------------------------------------------------- montañas */
+  /**
+   * Cordillera o macizo como pieza: relieve de crestas (ruido «ridged» en varias escalas) a lo largo de una línea de
+   * cumbres, con valles suavizados por erosión y bordes que bajan hasta el suelo (y = 0), coloreado por altura y pendiente:
+   * pradera abajo, bosque, roca en lo empinado y nieve arriba donde la pendiente la deja asentarse.
+   * p: {ancho, fondo, altura (unidades; 10 = 1 m: una montaña de verdad son miles), picos (1 = un macizo, 3-6 = cordillera),
+   * nieve (0-1: altura relativa donde empieza; false sin nieve), bosque (true), semilla, detalle (cuadrícula, por defecto 160),
+   * colores {pradera, bosque, roca, nieve}}.
+   */
+  function montana(p = {}) {
+    const W = p.ancho || 3000, D = p.fondo || 1600, H = p.altura || 900, rnd = K.rand(p.semilla ?? 3), seg = clamp(Math.round(p.detalle || 160), 40, 260);
+    const C = {pradera: '#7a8a52', bosque: '#3f5a36', roca: '#7a746c', roca2: '#5e5852', nieve: '#f2f4f6', ...(p.colores || {})};
+    const P = Array.from({length: 512}, () => rnd());
+    const hash = (x, z) => P[((x * 73856093) ^ (z * 19349663)) >>> 0 & 511];
+    const noise = (x, z) => { const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi, s = (t) => t * t * (3 - 2 * t); const a = hash(xi, zi), b = hash(xi + 1, zi), c = hash(xi, zi + 1), d = hash(xi + 1, zi + 1); return a + (b - a) * s(xf) + (c - a) * s(zf) + (a - b - c + d) * s(xf) * s(zf); };
+    const ridged = (x, z) => { let v = 0, amp = 0.55, f = 1, w = 1; for (let o = 0; o < 6; o++) { let n = 1 - Math.abs(noise(x * f, z * f) * 2 - 1); n *= n; n *= w; w = clamp(n * 1.6, 0, 1); v += n * amp; amp *= 0.5; f *= 2.05; } return v; };
+    const picos = Math.max(1, Math.round(p.picos ?? 4)), peaks = Array.from({length: picos}, (_, i) => ({x: (picos === 1 ? 0 : (i / (picos - 1) - 0.5) * W * 0.7) + (rnd() - 0.5) * W * 0.08, z: (rnd() - 0.5) * D * 0.25, h: 0.7 + rnd() * 0.3}));
+    const nx = seg, nz = Math.max(30, Math.round(seg * D / W)), hs = new Float32Array((nx + 1) * (nz + 1));
+    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
+      const x = (i / nx - 0.5) * W, z = (j / nz - 0.5) * D;
+      // Masa: suma de macizos alrededor de cada cumbre, y un borde que baja suave hasta el suelo.
+      let m = 0; for (const k of peaks) { const dx = (x - k.x) / (W * 0.32), dz = (z - k.z) / (D * 0.42); m = Math.max(m, k.h * Math.exp(-(dx * dx + dz * dz) * 1.6)); }
+      const er = Math.hypot((i / nx - 0.5) * 2, (j / nz - 0.5) * 2), edge = K.clamp((1 - er) / 0.35, 0, 1), e = edge * edge * (3 - 2 * edge);
+      const r = ridged(x / (W * 0.18) + 11, z / (W * 0.18) + 7);
+      const v = (m * 0.75 + m * r * 0.65 - 0.06) * e; hs[j * (nx + 1) + i] = v > 0 ? v * H : -H * 0.02;  // lo que no es montaña queda bajo el suelo
+    }
+    // Erosión térmica: lo que está demasiado empinado cae hacia el vecino más bajo (suaviza valles y pies de monte).
+    const cell = W / nx, talus = cell * 1.1;
+    for (let it = 0; it < 8; it++) for (let j = 1; j < nz; j++) for (let i = 1; i < nx; i++) { const k = j * (nx + 1) + i; let lo = k, dmax = 0; for (const o of [1, -1, nx + 1, -(nx + 1)]) { const d = hs[k] - hs[k + o]; if (d > dmax) { dmax = d; lo = k + o; } } if (dmax > talus) { const mv = (dmax - talus) * 0.25; hs[k] -= mv; hs[lo] += mv; } }
+    const geo = new T.PlaneGeometry(W, D, nx, nz); geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position;
+    for (let k = 0; k < pos.count; k++) { const i = k % (nx + 1), j = Math.floor(k / (nx + 1)); pos.setY(k, hs[j * (nx + 1) + i]); }
+    geo.computeVertexNormals();
+    const nor = geo.attributes.normal, cols = new Float32Array(pos.count * 3), c = new T.Color(), cc = {};
+    for (const key in C) cc[key] = new T.Color(C[key]);
+    const snowAt = p.nieve === false ? 2 : (p.nieve ?? 0.62);
+    for (let k = 0; k < pos.count; k++) {
+      const y = Math.max(0, pos.getY(k)) / H, slope = 1 - nor.getY(k), jitter = (noise(pos.getX(k) / 40, pos.getZ(k) / 40) - 0.5) * 0.12;
+      c.copy(cc.pradera);
+      if (p.bosque !== false) c.lerp(cc.bosque, K.clamp((y - 0.05 + jitter) / 0.1, 0, 1) * (1 - K.clamp((y - 0.38) / 0.1, 0, 1)) * (slope < 0.45 ? 1 : 0.4));
+      c.lerp(slope > 0.5 ? cc.roca2 : cc.roca, K.clamp(K.clamp((y - 0.3 + jitter) / 0.12, 0, 1) * (1 - K.clamp((0.25 - slope) / 0.2, 0, 1) * 0.5) + K.clamp((slope - 0.55) / 0.15, 0, 1) * 0.8, 0, 1));
+      c.lerp(cc.nieve, K.clamp((y - snowAt + jitter * 1.5) / 0.08, 0, 1) * K.clamp((0.62 - slope) / 0.2, 0, 1));
+      cols.set([c.r, c.g, c.b], k * 3);
+    }
+    geo.setAttribute('color', new T.BufferAttribute(cols, 3));
+    const g = new T.Group(), m = F.mesh(geo, '#ffffff', {outline: 0, extra: {vertexColors: true}});
+    g.add(m); g.userData.size = {w: W, h: H, d: D};
+    // Altura del relieve en un punto (coordenadas locales): para posar encima pueblos, árboles o personas.
+    g.userData.altura = (x, z) => { const i = clamp(Math.round((x / W + 0.5) * nx), 0, nx), j = clamp(Math.round((z / D + 0.5) * nz), 0, nz); return hs[j * (nx + 1) + i]; };
+    return g;
+  }
+
+  F.gen = {human, hull, arbol, animal, montana, HEADWEAR, HAIR, ARBOLES, ANIMALES: [...Object.keys(CUADRUPEDOS), ...Object.keys(AVES)]};
 })();
