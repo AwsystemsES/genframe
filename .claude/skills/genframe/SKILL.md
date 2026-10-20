@@ -36,7 +36,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 | `audio <nombre>` | Música compuesta, efectos y ambientes atados a palabras, mezcla a −14 LUFS. |
 | `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). |
 
-Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `auditar pruebas/mar`).
+Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `auditar /ruta/a/otra/carpeta`).
 
 ## Flujo de trabajo (en este orden, sin saltarte la revisión)
 
@@ -84,11 +84,10 @@ Un 5-6 es «correcto pero pobre». Un 8 es «lo publicaría un canal grande». N
 
 ## Mejorar el motor (para todos los vídeos)
 
-Cada fallo que aparezca en un vídeo se arregla, si se puede, en el motor (`src/kit/*.js`, `bin/genframe.mjs`) y no en la escena, y entra en el banco de pruebas:
+Cada fallo que aparezca en un vídeo se arregla, si se puede, en el motor (`src/kit/*.js`, `bin/genframe.mjs`) y no en la escena:
 1. Arreglo en el motor, genérico, sin nada de un vídeo concreto.
-2. Un caso en `pruebas/<caso>/` que lo reproduzca (si ninguno lo cubre).
-3. Una comprobación en `auditar` si se puede detectar sola.
-4. `npm test`: todas las pruebas sin graves y con sus fotos como la referencia. Si un cambio visual es bueno, se miran las fotos y se fija con `npm test -- --actualizar`.
+2. Una comprobación en `auditar` si se puede detectar sola.
+3. Comprobarlo con un proyecto mínimo de usar y tirar (fuera de `proyectos/` o borrándolo después): `validar`, `mesa`, `fotos` y `auditar` sin graves.
 
 A la skill solo va el criterio (encuadre, ritmo, estilo); todo lo que se pueda resolver con código va al motor.
 

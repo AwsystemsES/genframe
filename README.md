@@ -21,7 +21,7 @@ Necesitas tres cosas. Tu IA hace el resto.
 Después abre Claude Code en la carpeta donde quieras el proyecto (por ejemplo, Documentos) y **pega este mensaje**:
 
 ```text
-Quiero instalar el motor de vídeos genframe. Lee y sigue al pie de la letra la sección «Instrucciones para la IA» del README de https://github.com/AwsystemsES/genframe (repositorio privado: usa mi acceso de GitHub; si no puedes clonarlo, dime exactamente qué tengo que hacer). Instala todo lo que falte en mi ordenador explicándome cada paso en lenguaje sencillo, nunca me pidas las claves en el chat (dime en qué fichero ponerlas yo) y no des la instalación por terminada hasta que «npm test» salga en verde.
+Quiero instalar el motor de vídeos genframe. Lee y sigue al pie de la letra la sección «Instrucciones para la IA» del README de https://github.com/AwsystemsES/genframe (repositorio privado: usa mi acceso de GitHub; si no puedes clonarlo, dime exactamente qué tengo que hacer). Instala todo lo que falte en mi ordenador explicándome cada paso en lenguaje sencillo, nunca me pidas las claves en el chat (dime en qué fichero ponerlas yo) y no des la instalación por terminada hasta que la comprobación del paso 6 diga «sin errores».
 ```
 
 Cuando termine, pídele tu primer vídeo; por ejemplo: «hazme un short vertical de 1 minuto sobre el crack del 29». Antes de gastar en ElevenLabs te dirá cuánto cuesta y te pedirá permiso.
@@ -92,13 +92,11 @@ Enlaza `.claude/skills/genframe` en `~/.claude/skills/genframe`, de modo que la 
 ### 6. Verifica que todo funciona
 
 ```bash
-npm test
+node bin/genframe.mjs nuevo comprobacion
+node bin/genframe.mjs validar comprobacion
 ```
 
-Pasa el banco de pruebas: varias escenas (mar con tormenta, mar abierto visto de lejos, multitud entre obstáculos, efectos, textos y mapas, decoración de ciudad y campo, una ciudad con tráfico de día y de noche, un muestrario de acabados y rótulos, un vídeo de 60 escenas para comprobar que los subtítulos y la capa común nunca quedan tapados, y un campo con árboles, hierba y animales en aspecto de cómic y realista) que se auditan y se comparan con su imagen de referencia. Tarda unos 12 minutos y **no gasta nada**.
-- **Todas en verde (✔):** el motor está bien instalado.
-- **Alguna falla con «las fotos cambian respecto a la referencia»** en un ordenador distinto al original: puede deberse a otra tarjeta gráfica. Mira las fotos (`pruebas/<prueba>/fotos/todas/hoja.jpg`) y, si se ven bien, fija las referencias de esta máquina con `npm test -- --actualizar`.
-- **Si falla por otra cosa:** lee el error, arréglalo y vuelve a ejecutarlo.
+Crea un proyecto vacío y lo monta en el navegador de render. Si termina con **«✔ sin errores»**, el motor está bien instalado; después borra la carpeta `proyectos/comprobacion`. No gasta nada.
 
 Para comprobar también la voz, que **cuesta unos céntimos**, pide permiso al usuario antes.
 
@@ -129,7 +127,6 @@ Lee entero `docs/BRIEFING.md` (estado, reglas e historia) y `.claude/skills/genf
 ```bash
 git pull
 npm install
-npm test
 ```
 
 Los vídeos de `proyectos/` y el `.env` no se tocan al actualizar.
@@ -147,7 +144,7 @@ Con la skill instalada, pide el vídeo a Claude Code en lenguaje normal. La IA s
 6. música, efectos y mezcla a −14 LUFS;
 7. render del MP4, en `proyectos/<nombre>/<nombre>.mp4`.
 
-La herramienta también se usa a mano: `node bin/genframe.mjs` lista los comandos (`nuevo`, `voz`, `frases`, `palabras`, `mesa`, `fotos`, `validar`, `auditar`, `audio`, `render`). Si cambias el motor, pasa `npm test` antes de subir nada.
+La herramienta también se usa a mano: `node bin/genframe.mjs` lista los comandos (`nuevo`, `voz`, `frases`, `palabras`, `mesa`, `fotos`, `validar`, `auditar`, `audio`, `render`).
 
 **Cifras orientativas** (en un Mac):
 
@@ -164,18 +161,15 @@ La herramienta también se usa a mano: `node bin/genframe.mjs` lista los comando
 | `docs/BRIEFING.md` | Estado del proyecto, reglas del usuario e historia: lo primero que debe leer una IA. |
 | `.claude/skills/genframe/` | La skill (`SKILL.md`) y sus manuales: `referencia/kit.md` (escenas) y `referencia/taller.md` (piezas). |
 | `bin/genframe.mjs` | Herramienta de línea de comandos. |
-| `bin/pruebas.mjs`, `pruebas/` | Banco de pruebas del motor (`npm test`): escenas mínimas con su imagen de referencia. |
 | `bin/postinstall.mjs`, `bin/instalar-skill.mjs` | Lo que hacen `npm install` y `npm run instalar-skill`. |
 | `src/kit/kit.js` | Caja de herramientas 2D (`K`): sincronía con la voz, formas, iconos, banderas, mapas reales, títulos que se ajustan solos, rótulos sin solapes y animación. |
 | `src/kit/world3d.js` | Mundo 3D (`K.world3d`): mapa extruido, mar con olas, costa, nubes, luz, cámara segura, colisiones, rutas a pie, formaciones, efectos, decoración del entorno y auditoría física. |
-| `src/kit/gen.js` | Generadores del taller: personas articuladas (`f.gen.human`) y cascos de barco (`f.gen.hull`). |
+| `src/kit/gen.js` | Generadores del taller: personas articuladas (`f.gen.human`), cascos de barco (`f.gen.hull`), árboles (`f.gen.arbol`) y animales (`f.gen.animal`). |
 | `src/assemble.mjs` | Monta el proyecto HyperFrames. |
 | `src/audio.py` | Música compuesta, efectos, ambientes y mezcla a −14 LUFS. |
-| `assets/` | Recursos libres (detalle en `assets/LICENCIAS.md`): instrumentos, efectos, iluminaciones HDRI, texturas, la Tierra de la NASA y la geografía de Natural Earth. |
-| `referencias/videos/` | Vídeos de referencia de calidad. |
-| `docs/historia-laboratorio/`, `docs/historia-autake/` | Historia del proyecto; solo para consulta. |
+| `assets/` | Recursos libres para el sonido (instrumentos y efectos) y los nombres de países; detalle en `assets/LICENCIAS.md`. |
 | `proyectos/` | Tus vídeos. No se suben al repositorio. |
 
 ## Licencias
 
-Todo lo que usa el motor permite el uso comercial; el detalle está en `assets/LICENCIAS.md`. Si un vídeo usa los mapas de España por comunidades, hay que citar «© IGN». Los datos de la Tierra de la NASA exigen su crédito.
+Todo lo que usa el motor permite el uso comercial; el detalle está en `assets/LICENCIAS.md`. Si un vídeo usa los mapas de España por comunidades, hay que citar «© IGN».

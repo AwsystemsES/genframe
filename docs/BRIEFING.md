@@ -66,15 +66,10 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `src/assemble.mjs` | Monta el proyecto HyperFrames (ver §8). |
 | `src/audio.py` | Música compuesta (VSCO 2 o síntesis), efectos Kenney, ambientes sintetizados, ducking de la voz y loudnorm a −14 LUFS. |
 | `src/catalog.mjs` | Lo único fijo: tipografías (39 de Fontsource), transiciones, estilos de subtítulo, efectos, ambientes y límites de la música. |
-| `assets/` | Muestras VSCO 2 CE (piano, arpa, cuerdas), efectos Kenney (CC0), `countries.json`, `LICENCIAS.md`. Además, sin usar aún por el motor: `hdri/` (8 iluminaciones 360° CC0, para `RGBELoader`/entorno de Three.js), `textures/` (unas 50 texturas CC0 en JPG/PNG con sus mapas), `earth/` (Blue y Black Marble de la NASA, crédito obligatorio) y `geo/natural-earth/` (shapefiles 10m/50m: países, regiones, ciudades, costas, ríos, lagos, océanos). |
-| `referencias/videos/` | Los vídeos hechos a mano en el laboratorio que el usuario aprobó: `vox-gta.mp4`, `avion-marcha-atras.mp4`, `persona-gta.mp4`, `vox-programa.mp4`, `ciclo-agua.mp4`, `huso-horario-v1/v2.mp4`, `motor-manual.mp4`, `humo.mp4`. Son la vara de medir. |
-| `docs/historia-laboratorio/` | El motor del laboratorio del 14-10 (`motor-14-10/`: bucle con OpenAI y la biblioteca fija de modelos —castillos, ciudades, barcos, personas, A350, material de 1944— y la interfaz de videojuego; SOLO consulta de recetas, nunca para volver a meter modelos fijos), su README y el plan de 123 escenas del documental del Día D (`dia-d/`). |
+| `assets/` | Muestras VSCO 2 CE (piano, arpa, cuerdas), efectos Kenney (CC0), `countries.json`, `LICENCIAS.md`. |
 | `.claude/skills/genframe/` | `SKILL.md` (flujo, comandos, rúbrica y reglas) y `referencia/kit.md` y `referencia/taller.md`: los manuales que antes leía la IA de OpenAI; las notas de la skill explican cómo adaptarlos. |
-| `docs/historia-autake/` | Documentos de la época de Autake: diseño original, estudio de recursos libres con licencias verificadas y briefing del motor automático. |
 | `docs/encargos/` | Encargos pendientes (el short de Normandía). |
 | `proyectos/` | Un directorio por vídeo (no se sube). |
-| `pruebas/` | Banco de pruebas del motor: proyectos mínimos (mar, multitud, efectos, textos) con su `referencia.jpg`; lo generado no se sube. |
-| `bin/pruebas.mjs` | Corredor de `npm test`. |
 
 ## 5. La herramienta (`node bin/genframe.mjs <comando>`)
 
@@ -91,7 +86,6 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `audio <nombre>` | `sonido.json` (música de `plan.sonido.musica`, efectos atados a palabras y ambientes por escena) y `audio.py` → `mix.wav` a −14 LUFS. |
 | `auditar <nombre> [--paso=0.25]` | Recorre el vídeo montado en el Chrome de HyperFrames con `puppeteer-core` y lista los problemas físicos y visuales. Deja `auditoria.json`; ver la skill. |
 | `render <nombre> [--forzar]` | Audio, montaje, validación, auditoría y `hyperframes render` → `proyectos/<nombre>/<nombre>.mp4`. Con problemas graves no renderiza. |
-| `npm test` | Banco de pruebas del motor (`pruebas/`): auditoría sin graves y fotos iguales a su referencia. |
 
 Formato de `plan.json`:
 ```json
@@ -247,7 +241,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    - **Física:** flotación con inercia; máscara de agua en cascos abiertos; mar de Gerstner con reflejo, espuma de flotación y estela; cámara que nunca entra en el agua ni queda tapada por una ola; separación automática de piezas que nacen solapadas; terreno seguido al moverse.
    - **Herramientas nuevas:** `w.walk` (A*, sin pies que patinan), `w.formation`, `w.scatter`, `w.point`, `w.look`, `w.shake`; efectos con profundidad, anclables a piezas, más `fogonazo` y `columna`.
    - **Textos y mapas:** títulos que se encogen solos para caber, mapas a sangre y `K.map.labels`.
-   - **Control:** comando `auditar` integrado en `render` y banco `npm test`.
+   - **Control:** comando `auditar` integrado en `render`.
    - **Decoración (18-10):** `w.decorar('ciudad'|'campo'|'interior', {epoca})`, para que ningún plano tenga el suelo vacío; el auditor avisa de «suelo vacío» y el mobiliario no tapa nunca la cámara. Segundo vídeo: `proyectos/crack29/crack29.mp4`, el crack del 29 (60,3 s, ≈0,06 $ de voz).
    - **Calidad visual (19-10, tras auditar el vídeo del diésel):**
      - mar sin bordes ni patrón de manchas (11 ondas, rizo fino, bruma de horizonte, espuma con forma de casco);
@@ -257,7 +251,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
      - taller (19-10, tras auditar el vídeo de las gasolineras): acabados con textura y relieve (`acabado`, 13 materiales), formas redondeadas (`f.rbox`, `f.rcyl`, `f.capsula`) y rótulos que siempre caben (`f.letrero`), con aviso en la mesa y el auditor si la letra queda demasiado pequeña.
      - apilado (20-10, tras auditar el vídeo de los Apalaches): en vídeos de más de 50 escenas, las escenas tapaban los subtítulos, la capa común y la viñeta (las escenas se apilaban con 10 + su número y esas capas tenían 50-60). Ahora van siempre encima (`CAPAS` en `src/assemble.mjs`) y `auditar` marca como grave cualquier escena que las tape.
      - imagen y naturaleza (20-10): posprocesado de cada fotograma (supermuestreo, oclusión ambiental GTAO, resplandor, etalonaje con grano, SMAA; `arte.render`), luz de entorno a partir del cielo de cada escena y aspecto `'realista'` con materiales físicos, cielo físico (`fisico: true`), agua que refleja el cielo, hierba instanciada que se mece, y generadores `f.gen.arbol` (10 especies) y `f.gen.animal` (10 cuadrúpedos y 5 aves, articulados y con zancada). Tras actualizar hace falta `npm install` (el paquete de Three.js lleva módulos nuevos).
-     Pruebas nuevas en el banco: `mar-abierto`, `ciudad-viva` (día y noche), `acabados`, `muchas-escenas` (60 escenas) y `naturaleza` (cómic y realista). Tercer vídeo: `proyectos/diesel/diesel.mp4` (12:02, cinco capítulos).
+   - **Limpieza (20-10):** a petición del usuario se retiraron el banco de pruebas (`pruebas/`, `npm test`), los vídeos de referencia, la historia del laboratorio y de Autake, y los recursos que el motor no usaba (HDRI, texturas, la Tierra de la NASA, Natural Earth en shapefiles). Siguen en el historial de git si alguna vez hacen falta.
 4. **Generadores pendientes:** aviones, edificios protagonistas, vegetación variada, animales y personajes 2D; decoraciones `'industrial'`, `'carretera'`, `'puerto'` y `'oficial'`.
 5. **Mejoras de la herramienta:**
    - `fotos --escena` con zoom de detalle;

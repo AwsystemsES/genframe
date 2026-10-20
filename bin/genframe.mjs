@@ -47,7 +47,7 @@ const die = (msg) => { console.error('✖ ' + msg); process.exit(1); };
 /* ------------------------------------------------------------------ proyecto */
 function project(name) {
   if (!name) die('Falta el nombre del proyecto.');
-  // Un nombre es un proyecto de proyectos/; una ruta (con / o que empiece por .) es cualquier carpeta (p. ej. pruebas/mar).
+  // Un nombre es un proyecto de proyectos/; una ruta (con / o que empiece por .) es cualquier carpeta.
   const dir = /[\\/]/.test(name) || name.startsWith('.') ? path.resolve(name) : path.join(PROJECTS, name);
   name = path.basename(dir);
   if (!fs.existsSync(dir)) die(`No existe el proyecto ${name} (crea uno con «genframe nuevo ${name}»).`);
