@@ -279,6 +279,11 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
           try { for (const q of w.W.audit(tt)) res.push({...q, escena: sec.id.replace('sc-', '')}); } catch (e) { res.push({tipo: 'error', grave: true, texto: 'auditoría 3D: ' + e.message, escena: sec.id.replace('sc-', '')}); }
         }
         try { for (const q of K.auditDom()) res.push({...q, escena: top[top.length - 1] || '?'}); } catch (e) { res.push({tipo: 'error', grave: false, texto: 'auditoría de textos: ' + e.message, escena: '?'}); }
+        // Capas: ninguna escena visible puede quedar por encima de la viñeta, la capa común o los subtítulos.
+        { const z = (el) => +getComputedStyle(el).zIndex || 0, vis = (el) => el && el.style.display !== 'none';
+          const fixed = [['la viñeta', document.getElementById('fx')], ['la capa común', document.getElementById('overlay')], ...[...document.querySelectorAll('#root > .cap')].filter(vis).map((c) => ['los subtítulos', c])].filter(([, el]) => vis(el));
+          const scenesZ = [...document.querySelectorAll('#root > section.scene')].filter(vis);
+          for (const [name, el] of fixed) { const over = scenesZ.find((sc) => z(sc) >= z(el)); if (over) res.push({tipo: 'capas', grave: true, texto: `la escena tapa ${name} (orden de apilado)`, escena: over.id.replace('sc-', '')}); } }
         return res;
       }, t);
       for (const q of found) issues.push({...q, t});

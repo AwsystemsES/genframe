@@ -17,7 +17,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
   - `plan.json`: formato, voz, dirección de arte, escenas y sonido.
   - `piezas/<id>.js`: cuerpo de `function (f, p) { … return objeto3D; }` (3D) o, con `// 2d` en la primera línea, de `function (K, g, p) { … }` (2D).
   - `escenas/<id>.js`: cuerpo de `function (root, T0, T1) { … }`.
-  - `capa.js` (opcional): capa común encima de todo el vídeo, con T0 = 0 y T1 = duración.
+  - `capa.js` (opcional): capa común encima de todo el vídeo, con T0 = 0 y T1 = duración. La capa común, la viñeta y los subtítulos van siempre por encima de todas las escenas, sea cual sea su número.
 - Si falta `.env` con `ELEVENLABS_API_KEY`, pide al usuario que lo cree a partir de `.env.example`. Nunca le pidas la clave en el chat.
 
 ## Comandos
@@ -31,7 +31,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 | `palabras <nombre> [desde] [hasta]` | Palabras con su instante, para sincronizar con `K.cue`. |
 | `mesa <nombre> <pieza>` | Fotografía una pieza en un estudio neutro: 4 vistas y su medida real (10 unidades = 1 m). |
 | `validar <nombre>` | Monta el proyecto y lista los errores de ejecución por escena. |
-| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, tramos de más de 2 s casi quietos y fotogramas oscuros. Deja `auditoria.json`. |
+| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, escenas que tapan los subtítulos, la capa común o la viñeta, tramos de más de 2 s casi quietos y fotogramas oscuros. Deja `auditoria.json`. |
 | `fotos <nombre> --escena=<id> \| --todas \| --en=1.2,3` | Capturas para revisar; marca las oscuras, las de centro vacío y las repetidas. Deja `hoja.jpg`. |
 | `audio <nombre>` | Música compuesta, efectos y ambientes atados a palabras, mezcla a −14 LUFS. |
 | `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). |

@@ -255,7 +255,8 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
      - vida urbana en `w.decorar('ciudad')`: tráfico, coches aparcados, autobuses, taxis, semáforos y peatones;
      - luz: sombras de contacto y noche real (suelos oscurecidos, farolas con charco de luz, ventanas y faros encendidos).
      - taller (19-10, tras auditar el vídeo de las gasolineras): acabados con textura y relieve (`acabado`, 13 materiales), formas redondeadas (`f.rbox`, `f.rcyl`, `f.capsula`) y rótulos que siempre caben (`f.letrero`), con aviso en la mesa y el auditor si la letra queda demasiado pequeña.
-     Pruebas nuevas en el banco: `mar-abierto`, `ciudad-viva` (día y noche) y `acabados`. Tercer vídeo: `proyectos/diesel/diesel.mp4` (12:02, cinco capítulos).
+     - apilado (20-10, tras auditar el vídeo de los Apalaches): en vídeos de más de 50 escenas, las escenas tapaban los subtítulos, la capa común y la viñeta (las escenas se apilaban con 10 + su número y esas capas tenían 50-60). Ahora van siempre encima (`CAPAS` en `src/assemble.mjs`) y `auditar` marca como grave cualquier escena que las tape.
+     Pruebas nuevas en el banco: `mar-abierto`, `ciudad-viva` (día y noche), `acabados` y `muchas-escenas` (60 escenas). Tercer vídeo: `proyectos/diesel/diesel.mp4` (12:02, cinco capítulos).
 4. **Generadores pendientes:** aviones, edificios protagonistas, vegetación variada, animales y personajes 2D; decoraciones `'industrial'`, `'carretera'`, `'puerto'` y `'oficial'`.
 5. **Mejoras de la herramienta:**
    - `fotos --escena` con zoom de detalle;

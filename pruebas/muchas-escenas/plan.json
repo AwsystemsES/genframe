@@ -1,0 +1,544 @@
+{
+ "formato": "16:9",
+ "arte": {
+  "palette": {
+   "bg": "#14202c",
+   "bg2": "#2c3e50",
+   "ink": "#f2efe6",
+   "accent": "#e5ad58",
+   "accent2": "#c76e5a",
+   "soft": "#aabbc0"
+  },
+  "fonts": {
+   "title": "Archivo Black",
+   "body": "Inter",
+   "label": "IBM Plex Mono",
+   "hand": "Caveat"
+  },
+  "look": "comic",
+  "skies": {
+   "dia": {
+    "top": "#5d86b0",
+    "mid": "#a9c3da",
+    "low": "#e8eef2",
+    "fog": "#c9d6e0",
+    "sun": "#fff1d8",
+    "sunI": 2.2,
+    "amb": "#c7d5e2",
+    "ambI": 1.2,
+    "sea": "#2f5a7a",
+    "land": "#8a9a6a",
+    "elev": 35,
+    "az": 210
+   },
+   "tormenta": {
+    "top": "#2b3a4a",
+    "mid": "#55687a",
+    "low": "#8597a5",
+    "fog": "#6f8190",
+    "sun": "#dfe8f0",
+    "sunI": 1.6,
+    "amb": "#a9bccb",
+    "ambI": 1.35,
+    "sea": "#24425a",
+    "land": "#5d6458",
+    "elev": 30,
+    "az": 200,
+    "haze": 3.2
+   }
+  },
+  "captions": {
+   "style": "sombra",
+   "highlight": "#e5ad58"
+  },
+  "vignette": 0.1
+ },
+ "escenas": [
+  {
+   "id": "e01",
+   "frases": [
+    1,
+    1
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e02",
+   "frases": [
+    2,
+    2
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e03",
+   "frases": [
+    3,
+    3
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e04",
+   "frases": [
+    4,
+    4
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e05",
+   "frases": [
+    5,
+    5
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e06",
+   "frases": [
+    6,
+    6
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e07",
+   "frases": [
+    7,
+    7
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e08",
+   "frases": [
+    8,
+    8
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e09",
+   "frases": [
+    9,
+    9
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e10",
+   "frases": [
+    10,
+    10
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e11",
+   "frases": [
+    11,
+    11
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e12",
+   "frases": [
+    12,
+    12
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e13",
+   "frases": [
+    13,
+    13
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e14",
+   "frases": [
+    14,
+    14
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e15",
+   "frases": [
+    15,
+    15
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e16",
+   "frases": [
+    16,
+    16
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e17",
+   "frases": [
+    17,
+    17
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e18",
+   "frases": [
+    18,
+    18
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e19",
+   "frases": [
+    19,
+    19
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e20",
+   "frases": [
+    20,
+    20
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e21",
+   "frases": [
+    21,
+    21
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e22",
+   "frases": [
+    22,
+    22
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e23",
+   "frases": [
+    23,
+    23
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e24",
+   "frases": [
+    24,
+    24
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e25",
+   "frases": [
+    25,
+    25
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e26",
+   "frases": [
+    26,
+    26
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e27",
+   "frases": [
+    27,
+    27
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e28",
+   "frases": [
+    28,
+    28
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e29",
+   "frases": [
+    29,
+    29
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e30",
+   "frases": [
+    30,
+    30
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e31",
+   "frases": [
+    31,
+    31
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e32",
+   "frases": [
+    32,
+    32
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e33",
+   "frases": [
+    33,
+    33
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e34",
+   "frases": [
+    34,
+    34
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e35",
+   "frases": [
+    35,
+    35
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e36",
+   "frases": [
+    36,
+    36
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e37",
+   "frases": [
+    37,
+    37
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e38",
+   "frases": [
+    38,
+    38
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e39",
+   "frases": [
+    39,
+    39
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e40",
+   "frases": [
+    40,
+    40
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e41",
+   "frases": [
+    41,
+    41
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e42",
+   "frases": [
+    42,
+    42
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e43",
+   "frases": [
+    43,
+    43
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e44",
+   "frases": [
+    44,
+    44
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e45",
+   "frases": [
+    45,
+    45
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e46",
+   "frases": [
+    46,
+    46
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e47",
+   "frases": [
+    47,
+    47
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e48",
+   "frases": [
+    48,
+    48
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e49",
+   "frases": [
+    49,
+    49
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e50",
+   "frases": [
+    50,
+    50
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e51",
+   "frases": [
+    51,
+    51
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e52",
+   "frases": [
+    52,
+    52
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e53",
+   "frases": [
+    53,
+    53
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e54",
+   "frases": [
+    54,
+    54
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e55",
+   "frases": [
+    55,
+    55
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e56",
+   "frases": [
+    56,
+    56
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e57",
+   "frases": [
+    57,
+    57
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e58",
+   "frases": [
+    58,
+    58
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e59",
+   "frases": [
+    59,
+    59
+   ],
+   "transicion": "corte"
+  },
+  {
+   "id": "e60",
+   "frases": [
+    60,
+    60
+   ],
+   "transicion": "corte"
+  }
+ ],
+ "sonido": {
+  "musica": {
+   "engine": "ninguna"
+  }
+ },
+ "subtitulos": true
+}

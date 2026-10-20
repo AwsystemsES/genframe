@@ -95,7 +95,7 @@ Enlaza `.claude/skills/genframe` en `~/.claude/skills/genframe`, de modo que la 
 npm test
 ```
 
-Pasa el banco de pruebas: varias escenas (mar con tormenta, mar abierto visto de lejos, multitud entre obstáculos, efectos, textos y mapas, decoración de ciudad y campo, una ciudad con tráfico de día y de noche, y un muestrario de acabados y rótulos) que se auditan y se comparan con su imagen de referencia. Tarda unos 9 minutos y **no gasta nada**.
+Pasa el banco de pruebas: varias escenas (mar con tormenta, mar abierto visto de lejos, multitud entre obstáculos, efectos, textos y mapas, decoración de ciudad y campo, una ciudad con tráfico de día y de noche, un muestrario de acabados y rótulos, y un vídeo de 60 escenas para comprobar que los subtítulos y la capa común nunca quedan tapados) que se auditan y se comparan con su imagen de referencia. Tarda unos 10 minutos y **no gasta nada**.
 - **Todas en verde (✔):** el motor está bien instalado.
 - **Alguna falla con «las fotos cambian respecto a la referencia»** en un ordenador distinto al original: puede deberse a otra tarjeta gráfica. Mira las fotos (`pruebas/<prueba>/fotos/todas/hoja.jpg`) y, si se ven bien, fija las referencias de esta máquina con `npm test -- --actualizar`.
 - **Si falla por otra cosa:** lee el error, arréglalo y vuelve a ejecutarlo.
@@ -143,7 +143,7 @@ Con la skill instalada, pide el vídeo a Claude Code en lenguaje normal. La IA s
 2. dirección de arte (paleta, tipografías, cielos);
 3. reparto: cada pieza 3D se fabrica y se revisa en una «mesa» de fotos;
 4. escenas, con el entorno decorado (calles, campo o interiores) y revisadas con fotos;
-5. auditoría automática de choques, cámara, textos, suelo vacío, tramos quietos y fotogramas oscuros;
+5. auditoría automática de choques, cámara, textos, subtítulos tapados, suelo vacío, tramos quietos y fotogramas oscuros;
 6. música, efectos y mezcla a −14 LUFS;
 7. render del MP4, en `proyectos/<nombre>/<nombre>.mp4`.
 

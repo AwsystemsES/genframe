@@ -102,9 +102,13 @@ function background(art) {
   return {base, grain};
 }
 
+// Orden de apilado: cada escena va encima de la anterior (10 + su número, para que las transiciones solapen bien) y la
+// viñeta, la capa común y los subtítulos van SIEMPRE por encima de todas, tenga el vídeo las escenas que tenga.
+export const CAPAS = {escenas: 10, vineta: 900000, capa: 900010, subtitulos: 900020};
+
 function captionCss(art) {
   const p = art.palette, f = art.fonts, c = art.captions || {};
-  const base = `.cap{z-index:60;inset:auto;left:0;right:0;bottom:44px;display:flex;justify-content:center}
+  const base = `.cap{z-index:${CAPAS.subtitulos};inset:auto;left:0;right:0;bottom:44px;display:flex;justify-content:center}
 .cap .box{position:relative;z-index:0;max-width:1560px;text-align:center;font:600 40px/1.3 '${f.body}';color:${c.text || p.ink}}
 .w{position:relative;display:inline-block;margin:0 .06em}
 .w .hl{position:absolute;left:-3px;right:-3px;top:12%;bottom:6%;background:${c.highlight || p.accent};opacity:.85;z-index:-1;transform-origin:0 50%;transform:scaleX(0);border-radius:6px}`;
@@ -178,7 +182,7 @@ ${captionCss(art)}`;
     // Un corte entra justo en su instante; las demás transiciones empiezan TURN antes para fundirse con la anterior.
     const start = i === 0 ? 0 : Math.max(0, s.start - ((s.transition || 'corte') === 'corte' ? 0 : TURN));
     const end = i === job.scenes.length - 1 ? job.duration : job.scenes[i + 1].start + 0.02;
-    return `<section id="sc-${s.id}" class="clip scene${s.transition === 'pagina' ? ' shadow' : ''}" style="z-index:${10 + i}" data-start="${start.toFixed(3)}" data-duration="${(end - start).toFixed(3)}"><div class="scene-root"></div></section>`;
+    return `<section id="sc-${s.id}" class="clip scene${s.transition === 'pagina' ? ' shadow' : ''}" style="z-index:${CAPAS.escenas + i}" data-start="${start.toFixed(3)}" data-duration="${(end - start).toFixed(3)}"><div class="scene-root"></div></section>`;
   });
   // Cada escena se compila aparte: si no compila o falla al ejecutarse, sale un rótulo con su frase.
   const runs = job.scenes.map((s) => `
@@ -223,8 +227,8 @@ ${uses3d ? '<script src="./lib/three.js"></script>\n<script src="./lib/world3d.j
 <body>
 <div id="root" data-composition-id="main" data-no-timeline data-start="0" data-duration="${job.duration.toFixed(3)}" data-width="${W}" data-height="${H}">
   ${sections.join('\n  ')}
-  <div id="fx" class="clip" style="z-index:50;pointer-events:none" data-start="0" data-duration="${job.duration.toFixed(3)}"><div id="fx-vig"></div></div>
-  ${job.overlay ? `<div id="overlay" class="clip" style="z-index:55;pointer-events:none" data-start="0" data-duration="${job.duration.toFixed(3)}"></div>` : ''}
+  <div id="fx" class="clip" style="z-index:${CAPAS.vineta};pointer-events:none" data-start="0" data-duration="${job.duration.toFixed(3)}"><div id="fx-vig"></div></div>
+  ${job.overlay ? `<div id="overlay" class="clip" style="z-index:${CAPAS.capa};pointer-events:none" data-start="0" data-duration="${job.duration.toFixed(3)}"></div>` : ''}
   ${caps.join('\n  ')}
   ${job.audio ? `<audio id="mix" src="./assets/mix.wav" data-start="0" data-duration="${job.duration.toFixed(3)}" data-volume="1"></audio>` : ''}
 </div>
