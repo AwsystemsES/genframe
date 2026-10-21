@@ -34,7 +34,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 | `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, escenas que tapan los subtítulos, la capa común o la viñeta, tramos de más de 2 s casi quietos y fotogramas oscuros. Deja `auditoria.json`. |
 | `fotos <nombre> --escena=<id> \| --todas \| --en=1.2,3` | Capturas para revisar; marca las oscuras, las de centro vacío y las repetidas. Deja `hoja.jpg`. |
 | `audio <nombre>` | Música compuesta, efectos y ambientes atados a palabras, mezcla a −14 LUFS. |
-| `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). |
+| `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). Si el vídeo dura más de 90 s, renderiza **por tramos con caché** (~45 s, empezando en una escena, en `proyectos/<nombre>/tramos/`): cada tramo lleva la huella de todo lo que le afecta (motor, arte, piezas, capa común, sus escenas y palabras) y solo se rehacen los que cambiaron; se unen sin recomprimir. `--tramos=0` lo desactiva, `--tramos=<s>` cambia la longitud y `--rehacer` los rehace todos. |
 
 Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `auditar /ruta/a/otra/carpeta`).
 

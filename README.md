@@ -118,7 +118,7 @@ Lee entero `docs/BRIEFING.md` (estado, reglas e historia) y `.claude/skills/genf
 | `No encuentro el Chrome de HyperFrames` | `npx hyperframes browser ensure`, o pon en el `.env` `CHROME=` con la ruta a un Chrome o Chromium. |
 | `ElevenLabs 401 … voices_read` al listar voces | Esa clave no tiene ese permiso. Locutar sí funciona: pon el `ELEVENLABS_VOICE_ID` a mano. |
 | `ElevenLabs 401` al locutar | Clave mal copiada o sin permiso de texto a voz. Revisa el `.env`. |
-| El render tarda mucho | Normal sin GPU (Linux o máquinas virtuales): unas 3,5 veces la duración del vídeo. En un Mac, menos de 1 vez. |
+| El render tarda mucho | Normal sin GPU (Linux o máquinas virtuales): unas 3,5 veces la duración del vídeo. En un Mac, menos de 1 vez. En vídeos de más de 90 s, `render` guarda tramos en `proyectos/<nombre>/tramos/` y, al cambiar una escena, solo rehace su tramo. |
 | `render` se niega: «la auditoría encuentra problemas graves» | Es intencionado: el vídeo tiene fallos (piezas que se atraviesan, cámara dentro del agua, textos cortados…). Arréglalos; `--forzar` lo salta bajo tu responsabilidad. |
 | `npm run instalar-skill` falla en Windows | Activa el Modo de desarrollador de Windows o usa una terminal de administrador. |
 

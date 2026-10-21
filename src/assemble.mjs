@@ -83,7 +83,7 @@ function kitData(job, code) {
   }
   const countries = JSON.parse(fs.readFileSync(path.join(ASSETS, 'countries.json')));
   const [W, H] = job.format === '9:16' ? [1080, 1920] : [1920, 1080];
-  return {width: W, height: H, duration: job.duration, words: job.words, palette: job.art.palette, skies: job.art.skies || {}, look: job.art.look || 'comic', render: job.art.render || {}, calidad: job.calidad || 'alta', icons, flags, geo, countries};
+  return {width: W, height: H, duration: job.duration, words: job.words, palette: job.art.palette, skies: job.art.skies || {}, look: job.art.look || 'comic', render: job.art.render || {}, calidad: job.calidad || 'alta', offset: job.tramo ? job.tramo.a : 0, icons, flags, geo, countries};
 }
 
 /** Fondo de las escenas: color o degradado de la paleta y, encima, grano procedural (ruido SVG en gris, no tiñe la paleta). */
@@ -177,15 +177,27 @@ ${bg.grain}
 ${captionCss(art)}`;
   fs.writeFileSync(path.join(out, 'style.css'), css);
 
+  // Tramo (render por trozos): solo las escenas y subtítulos que tocan [a, b]; sus tiempos en el reloj del tramo. La página
+  // suma el desfase a, así que las escenas, la voz y la cámara siguen en tiempo absoluto.
+  const TR = job.tramo || null, OFF = TR ? TR.a : 0;
+  // HyperFrames renderiza ceil(duración × 30) fotogramas: un tramo intermedio dura medio fotograma menos de sus n fotogramas
+  // exactos, para que al unirlos no sobre ninguno y el vídeo no se desplace.
+  const LEN = !TR ? job.duration : TR.b >= job.duration - 1e-6 ? TR.b - TR.a : (Math.round((TR.b - TR.a) * 30) - 0.5) / 30;
+  const inTr = (a, b) => !TR || (b > TR.a && a < TR.b);
+  const clipT = (a, b) => (TR ? [Math.max(a, TR.a) - TR.a, Math.min(b, TR.b) - Math.max(a, TR.a)] : [a, b - a]);
   // Escenas: cada una en su sección, que entra por encima de la anterior con su transición.
+  const sceneSpan = (s, i) => [i === 0 ? 0 : Math.max(0, s.start - ((s.transition || 'corte') === 'corte' ? 0 : TURN)), i === job.scenes.length - 1 ? job.duration : job.scenes[i + 1].start + 0.02];
+  const keep = job.scenes.map((s, i) => inTr(...sceneSpan(s, i)));
   const sections = job.scenes.map((s, i) => {
+    if (!keep[i]) return '';
     // Un corte entra justo en su instante; las demás transiciones empiezan TURN antes para fundirse con la anterior.
     const start = i === 0 ? 0 : Math.max(0, s.start - ((s.transition || 'corte') === 'corte' ? 0 : TURN));
     const end = i === job.scenes.length - 1 ? job.duration : job.scenes[i + 1].start + 0.02;
-    return `<section id="sc-${s.id}" class="clip scene${s.transition === 'pagina' ? ' shadow' : ''}" style="z-index:${CAPAS.escenas + i}" data-start="${start.toFixed(3)}" data-duration="${(end - start).toFixed(3)}"><div class="scene-root"></div></section>`;
+    const [cs, cd] = clipT(start, end);
+    return `<section id="sc-${s.id}" class="clip scene${s.transition === 'pagina' ? ' shadow' : ''}" style="z-index:${CAPAS.escenas + i}" data-start="${cs.toFixed(3)}" data-duration="${cd.toFixed(3)}"><div class="scene-root"></div></section>`;
   });
   // Cada escena se compila aparte: si no compila o falla al ejecutarse, sale un rótulo con su frase.
-  const runs = job.scenes.map((s) => `
+  const runs = job.scenes.map((s, i) => !keep[i] ? '' : `
 /* escena ${s.id} */
 (function (root, T0, T1) {
   try {
@@ -206,7 +218,9 @@ ${transition(s)}`).join('\n');
   for (const chunk of captionChunks(job.words, art.vertical ? 26 : job.overlay ? 40 : 52)) {
     cid++;
     const a = chunk[0].a, b = chunk[chunk.length - 1].b;
-    caps.push(`<div class="clip cap" data-start="${a.toFixed(3)}" data-duration="${(b - a).toFixed(3)}"><span class="box">${chunk.map((w, k) => `<span class="w" id="c${cid}w${k}">${esc(w.t)}</span>`).join(' ')}</span></div>`);
+    if (!inTr(a, b)) continue;
+    const [ca, cd] = clipT(a, b);
+    caps.push(`<div class="clip cap" data-start="${ca.toFixed(3)}" data-duration="${cd.toFixed(3)}"><span class="box">${chunk.map((w, k) => `<span class="w" id="c${cid}w${k}">${esc(w.t)}</span>`).join(' ')}</span></div>`);
     chunk.forEach((w, k) => marks.push([`c${cid}w${k}`, w.a, w.b]));
   }
   const html = `<!doctype html>
@@ -225,12 +239,12 @@ ${uses3d ? '<script src="./lib/three.js"></script>\n<script src="./lib/world3d.j
 <script src="./models.js"></script>
 </head>
 <body>
-<div id="root" data-composition-id="main" data-no-timeline data-start="0" data-duration="${job.duration.toFixed(3)}" data-width="${W}" data-height="${H}">
+<div id="root" data-composition-id="main" data-no-timeline data-start="0" data-duration="${LEN.toFixed(3)}" data-width="${W}" data-height="${H}">
   ${sections.join('\n  ')}
-  <div id="fx" class="clip" style="z-index:${CAPAS.vineta};pointer-events:none" data-start="0" data-duration="${job.duration.toFixed(3)}"><div id="fx-vig"></div></div>
-  ${job.overlay ? `<div id="overlay" class="clip" style="z-index:${CAPAS.capa};pointer-events:none" data-start="0" data-duration="${job.duration.toFixed(3)}"></div>` : ''}
+  <div id="fx" class="clip" style="z-index:${CAPAS.vineta};pointer-events:none" data-start="0" data-duration="${LEN.toFixed(3)}"><div id="fx-vig"></div></div>
+  ${job.overlay ? `<div id="overlay" class="clip" style="z-index:${CAPAS.capa};pointer-events:none" data-start="0" data-duration="${LEN.toFixed(3)}"></div>` : ''}
   ${caps.join('\n  ')}
-  ${job.audio ? `<audio id="mix" src="./assets/mix.wav" data-start="0" data-duration="${job.duration.toFixed(3)}" data-volume="1"></audio>` : ''}
+  ${job.audio && !TR ? `<audio id="mix" src="./assets/mix.wav" data-start="0" data-duration="${job.duration.toFixed(3)}" data-volume="1"></audio>` : ''}
 </div>
 <script>
 ${runs}
@@ -247,6 +261,8 @@ ${JSON.stringify(marks)}.forEach(([id, a, b]) => {
   K.tl.add(hl, {scaleX: [0, 1], duration: 140, ease: 'outQuad'}, K.ms(a));
   K.tl.add(hl, {opacity: [0.85, 0], duration: 90, ease: 'linear'}, K.ms(b - 0.03));
 });
+${OFF ? `// Tramo: HyperFrames también descubre K.tl por su cuenta, así que el desfase va en su propio seek.
+{ const seek0 = K.tl.seek; K.tl.seek = function (ms, ...r) { return seek0.call(this, ms + ${Math.round(OFF * 1000)}, ...r); }; }` : ''}
 window.__hfAnime = [...(window.__hfAnime || []), K.tl];
 </script>
 </body>

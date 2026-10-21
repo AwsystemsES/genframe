@@ -18,6 +18,7 @@ import {execFile} from 'child_process';
 import {promisify} from 'util';
 import {fileURLToPath} from 'url';
 import {createRequire} from 'module';
+import crypto from 'crypto';
 
 const run = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -489,10 +490,57 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
       if (res.graves.length && !args.forzar) die(`La auditoría encuentra ${res.graves.length} problemas graves: arréglalos o renderiza con --forzar.`);
     }
     const mp4 = path.join(p.dir, path.basename(p.dir) + '.mp4');
-    await run(HF, ['render', '--output', mp4, out], {cwd: out, maxBuffer: 1 << 28});
+    const total = duration(p);
+    if (args.tramos === '0' || (!args.tramos && total < 90)) await run(HF, ['render', '--output', mp4, out], {cwd: out, maxBuffer: 1 << 28});
+    else await renderTramos(p, mp4, {forzar: !!args.rehacer, len: Number(args.tramos) || 45});
     console.log(`✔ ${mp4} · ${duration(p)} s de vídeo en ${((Date.now() - started) / 1000).toFixed(0)} s`);
   },
 };
+
+/*
+ * Render por tramos: el vídeo se parte en trozos de ~45 s que empiezan en una escena, cada uno con la huella de TODO lo
+ * que influye en él (motor, dirección de arte, piezas, capa común, sus escenas, sus palabras y su intervalo). Solo se
+ * renderiza el tramo cuya huella no está en proyectos/<nombre>/tramos/: cambiar una escena de un vídeo de 25 minutos
+ * vuelve a renderizar su minuto, no el vídeo entero. Los tramos se unen por copia (sin recomprimir) y se añade el audio.
+ */
+async function renderTramos(p, mp4, {forzar = false, len = 45} = {}) {
+  const fps = 30, total = duration(p), scenes = timedScenes(p), q = (t) => Math.round(t * fps) / fps;
+  const cuts = [0];
+  for (const s of scenes) if (s.start - cuts[cuts.length - 1] >= len && total - s.start >= len / 3) cuts.push(q(s.start));
+  cuts.push(total);
+  const engine = crypto.createHash('sha1');
+  for (const f of ['src/assemble.mjs', 'src/kit/kit.js', 'src/kit/world3d.js', 'src/kit/gen.js']) if (fs.existsSync(path.join(ROOT, f))) engine.update(fs.readFileSync(path.join(ROOT, f)));
+  const base = job(p, {}), common = engine.digest('hex') + JSON.stringify({art: base.art, models: base.models, overlay: base.overlay, fmt: base.format, dur: base.duration});
+  const dir = path.join(p.dir, 'tramos'); fs.mkdirSync(dir, {recursive: true});
+  const files = [], started = Date.now(); let made = 0;
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const a = cuts[i], b = cuts[i + 1];
+    // Las escenas que el montaje mete en el tramo: las que se ven en él (con el fundido de entrada, si lo hay).
+    const mine = base.scenes.filter((s, k) => { const end = k === base.scenes.length - 1 ? total : base.scenes[k + 1].start + 0.02; return end > a && (k === 0 ? 0 : s.start - (s.transition === 'corte' ? 0 : 1)) < b; });
+    const words = base.words.filter((w) => w.b > a - 1 && w.a < b + 1);
+    const h = crypto.createHash('sha1').update(common + JSON.stringify({a, b, mine, words})).digest('hex').slice(0, 16);
+    const file = path.join(dir, `${String(i).padStart(3, '0')}_${h}.mp4`);
+    files.push(file);
+    if (fs.existsSync(file) && !forzar) continue;
+    const build = path.join(dir, '_montaje');
+    fs.rmSync(build, {recursive: true, force: true});
+    assemble({...base, tramo: {a, b}}, build);
+    process.stdout.write(`  tramo ${i + 1}/${cuts.length - 1} (${a.toFixed(0)}–${b.toFixed(0)} s)…\r`);
+    await run(HF, ['render', '--quiet', '--output', file, build], {cwd: build, maxBuffer: 1 << 28});
+    fs.rmSync(build, {recursive: true, force: true});
+    made++;
+  }
+  // Fuera los tramos viejos que ya no forman parte del vídeo.
+  for (const f of fs.readdirSync(dir)) { const full = path.join(dir, f); if (f.endsWith('.mp4') && !files.includes(full)) fs.rmSync(full); }
+  const list = path.join(dir, 'lista.txt');
+  fs.writeFileSync(list, files.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'));
+  const video = path.join(dir, '_video.mp4');
+  await run(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video]);
+  const mix = path.join(p.dir, 'mix.wav');
+  await run(FFMPEG, ['-y', '-loglevel', 'error', '-i', video, ...(fs.existsSync(mix) ? ['-i', mix, '-map', '0:v', '-map', '1:a', '-c:a', 'aac', '-b:a', '192k'] : []), '-c:v', 'copy', '-movflags', '+faststart', mp4]);
+  fs.rmSync(video, {force: true});
+  console.log(`  ${made} de ${files.length} tramos renderizados (${files.length - made} reutilizados) en ${((Date.now() - started) / 1000).toFixed(0)} s` + ' '.repeat(10));
+}
 
 const [cmd, ...rest] = process.argv.slice(2);
 if (!COMMANDS[cmd]) {
@@ -507,7 +555,7 @@ if (!COMMANDS[cmd]) {
   fotos <nombre> --en=1.2,3 | --escena=<id> | --todas   capturas para revisar (con brillo, vacío y repetidos)
   audio <nombre>               música, efectos y mezcla a -14 LUFS
   auditar <nombre> [--paso=0.25]   auditoría física y visual: choques, cámara, textos, tramos quietos y oscuros
-  render <nombre> [--forzar] [--sin-auditar]   audio + montaje + auditoría + MP4 final`);
+  render <nombre> [--forzar] [--sin-auditar] [--tramos=0|segundos] [--rehacer]   audio + montaje + auditoría + MP4 final (por tramos con caché si dura más de 90 s)`);
   process.exit(cmd ? 1 : 0);
 }
 await COMMANDS[cmd](rest);

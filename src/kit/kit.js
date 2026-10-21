@@ -438,7 +438,8 @@
   // En el render, HyperFrames avisa con «hf-seek» cuando ya ha colocado la línea de tiempo: se dibuja ahí, una vez.
   // Sin ese aviso (vista previa), dibuja el propio reloj.
   let seeks = false;
-  window.addEventListener('hf-seek', (e) => { seeks = true; clock.t = Number(e.detail && e.detail.time) || 0; runHooks(clock.t); });
+  // En un tramo (render por trozos) el reloj de HyperFrames empieza en 0 y el vídeo en D.offset.
+  window.addEventListener('hf-seek', (e) => { seeks = true; clock.t = (Number(e.detail && e.detail.time) || 0) + (D.offset || 0); runHooks(clock.t); });
   tl.add(clock, {t: [0, D.duration || 1], duration: K.ms(D.duration || 1), ease: 'linear', onUpdate: () => { if (!seeks) runHooks(clock.t); }}, 0);
   window.K = K;
 })();
