@@ -459,6 +459,47 @@
     x.fillStyle = g; x.fillRect(0, 0, 128, 128);
     return (puffTex = new T.CanvasTexture(c));
   };
+  /* Bocanada iluminada (humo y fuego con volumen): un cuadrado que mira a cámara y dibuja una bola de ruido con su
+   * normal, iluminada por el sol (lado de luz claro, lado de sombra oscuro y borde translúcido). En fuego, el núcleo
+   * arde de blanco a rojo según la edad y suma luz. Todo depende de la semilla y de la vida: determinista. */
+  const NOISE2 = `
+    float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+    float fbm2(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * n2(p); p = p * 2.03 + 17.1; a *= 0.5; } return s; }`;
+  const QUAD = new T.PlaneGeometry(1, 1);
+  const billowMaterial = (fire) => new T.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: T.NormalBlending,  // el fuego brilla por su valor alto (el resplandor lo recoge), no sumando
+    uniforms: {uLife: {value: 0}, uSeed: {value: 0}, uOpacity: {value: 0}, uDark: {value: new T.Color('#2d2a30')}, uLight: {value: new T.Color('#c9c4c8')},
+      uSun: {value: new T.Vector3(0, 1, 0)}, uSunCol: {value: new T.Color('#fff')}, uAmb: {value: new T.Color('#9aa')}, uFogCol: {value: new T.Color('#ccc')}, uFog: {value: 0}},
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float uLife, uSeed, uOpacity, uFog; uniform vec3 uDark, uLight, uSun, uSunCol, uAmb, uFogCol;
+      ${NOISE2}
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        // Borde de coliflor: el radio se come con ruido que cambia con la vida (la bocanada se revuelve al subir).
+        float r = length(p), ang = atan(p.y, p.x + 1e-5);
+        float edge = 0.5 + 0.34 * fbm2(vec2(ang * 2.4 + uSeed * 7.0, uLife * 1.8 + uSeed)) + 0.2 * fbm2(p * 4.5 + uSeed * 3.0 + vec2(0.0, -uLife * 1.5));
+        float d = smoothstep(edge, edge - 0.42, r) * (0.75 + 0.25 * fbm2(p * 7.0 + uSeed));
+        if (d < 0.01) discard;
+        // Normal de la bola con relieve de ruido: el sol la modela.
+        vec2 e = vec2(0.04, 0.0);
+        float hN = fbm2(p * 3.2 + uSeed * 5.0 + vec2(0.0, -uLife * 1.2));
+        vec2 grad = vec2(fbm2(p * 3.2 + e.xy + uSeed * 5.0 + vec2(0.0, -uLife * 1.2)) - hN, fbm2(p * 3.2 + e.yx + uSeed * 5.0 + vec2(0.0, -uLife * 1.2)) - hN) / 0.04;
+        vec3 n = normalize(vec3(p * 0.9 - grad * 0.18, sqrt(max(0.05, 1.0 - min(1.0, r * r)))));
+        float lam = clamp(dot(n, uSun) * 0.5 + 0.5, 0.0, 1.0);
+        vec3 base = mix(uDark, uLight, clamp(uLife * 1.3, 0.0, 1.0));
+        vec3 col = base * (uAmb * 0.55 + uSunCol * lam * 0.85) + uSunCol * pow(1.0 - d, 3.0) * max(0.0, -uSun.z) * 0.35;  // borde a contraluz
+        float a = d * uOpacity;
+        ${fire ? `// Fuego: el núcleo caliente (centro y juventud) va de blanco a amarillo, naranja y rojo; con la edad, a humo.
+        float heat = clamp((1.0 - uLife * 1.6) * (1.0 - r * 0.9) + hN * 0.25 - 0.1, 0.0, 1.0);
+        vec3 fc = heat > 0.75 ? mix(vec3(1.0, 0.82, 0.45), vec3(1.0, 0.97, 0.85), (heat - 0.75) * 4.0) : heat > 0.4 ? mix(vec3(1.0, 0.42, 0.08), vec3(1.0, 0.82, 0.45), (heat - 0.4) / 0.35) : mix(vec3(0.45, 0.06, 0.02), vec3(1.0, 0.42, 0.08), heat / 0.4);
+        col = fc * (0.6 + heat * 1.6); a *= smoothstep(0.0, 0.25, heat) ;` : ''}
+        col = mix(col, uFogCol, uFog);
+        gl_FragColor = vec4(clamp(col, 0.0, 3.0), clamp(a, 0.0, 1.0));
+      }`,
+  });
+
   /* ---------------------------------------------------------------- colisiones
    * Cada pieza se aproxima por las cajas orientadas (OBB) de sus mallas (o por sus colisionadores explícitos,
    * userData.colliders, para piezas cóncavas como los cascos abiertos). Sirve para separar lo que nace solapado,
@@ -584,6 +625,9 @@
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     scene.add(sun, sun.target);
+    // Dirección hacia el sol (mundo) y luz del cielo, para lo que se ilumina a mano (bocanadas, nubes de volumen).
+    const sunDirW = new T.Vector3(Math.cos((S.elev * Math.PI) / 180) * Math.sin((S.az * Math.PI) / 180), Math.sin((S.elev * Math.PI) / 180), Math.cos((S.elev * Math.PI) / 180) * Math.cos((S.az * Math.PI) / 180)).normalize();
+    const hemiCol = new T.Color(S.amb);
     const fill = new T.DirectionalLight(new T.Color(S.night ? '#c8d4ee' : '#ffe2c4'), S.night ? 0.5 : 0.9);
     scene.add(fill, fill.target);
     const rimLight = new T.DirectionalLight(new T.Color(S.night ? '#9fb6e0' : S.low || '#ffffff'), rim * (S.night ? 0.95 : 1.1));
@@ -984,7 +1028,7 @@
      * where: [lon, lat], {x, z, y} o una pieza (se ancla a ella; `offset` {x, y, z} en sus coordenadas). Sin y, nace en el suelo o en el mar.
      * opts: size, n, seed, dir (vector de salida del fogonazo), cada, shake (sacude la cámara en cada disparo o impacto).
      */
-    W.fx = (kind, where, t0, t1, {size = 1, n = null, seed = 5, dir = null, cada = 0, shake = 0, material = 'arena', offset = null, wind = 0} = {}) => {
+    W.fx = (kind, where, t0, t1, {size = 1, n = null, seed = 5, dir = null, cada = 0, shake = 0, material = 'arena', offset = null, wind = 0, plano = false, color = null} = {}) => {
       const r = K.rand(seed);
       const anchor = where && where.isObject3D ? where : null;
       const fixed = anchor ? null : (() => { const [x, z] = toXZ(where); return {x, z, y: where && where.y !== undefined ? where.y : null}; })();
@@ -1058,11 +1102,13 @@
       for (let i = 0; i < count; i++) {
         let m;
         if (kind === 'rain') { m = new T.Mesh(new T.BoxGeometry(0.15, 3, 0.15), new T.MeshBasicMaterial({color: new T.Color(col[i % col.length]), transparent: true, opacity: 0})); scene.add(m); }
+        else if ((kind === 'smoke' || kind === 'fire') && !plano) { m = new T.Mesh(QUAD, billowMaterial(kind === 'fire')); m.userData.sprite = m.userData.billow = true; m.renderOrder = 4; scene.add(m); }
         else { m = sprite(col[i % col.length], kind === 'smoke' ? T.NormalBlending : T.AdditiveBlending); m.userData.sprite = true; }
         parts.push({m, ph: r(), dx: (r() - 0.5) * 8 * size, dz: (r() - 0.5) * 8 * size, sp: 0.6 + r() * 0.8});
       }
       if (kind === 'explosion') shakeAt(t0);
       const dark = new T.Color('#2d2a30'), light = new T.Color(kind === 'smoke' ? '#b9b4ba' : '#ffffff');
+      const billowDark = new T.Color(color || '#4a464e').multiplyScalar(color ? 0.55 : 1), billowLight = new T.Color(color || '#d4d0d4');
       updaters.push((tt) => {
         const on = tt >= t0 && tt <= t1;
         const p = baseAt(tt);
@@ -1073,11 +1119,103 @@
           const rise = kind === 'smoke' ? 30 : kind === 'explosion' ? 14 : 10;
           const spread = kind === 'explosion' ? 1 + life * 2.5 : 1 + life;
           q.m.position.set(p.x + q.dx * spread * 0.4 + wind * life * 20 * size, p.y + life * rise * size, p.z + q.dz * spread * 0.4);
-          q.m.scale.setScalar((kind === 'smoke' ? 1 + life * 2.5 : 1.2 - life) * size * (q.m.userData.sprite ? 3.2 : 1));
+          q.m.scale.setScalar((kind === 'smoke' ? 1 + life * 2.5 : q.m.userData.billow ? 1.1 + life * 0.6 : 1.2 - life) * size * (q.m.userData.sprite ? 3.2 : 1));
+          if (q.m.userData.billow) {
+            // Bocanada iluminada: mira a cámara y recibe el sol en coordenadas de vista.
+            const u = q.m.material.uniforms;
+            q.m.quaternion.copy(camera.quaternion);
+            u.uLife.value = life; u.uSeed.value = q.ph * 13.7;
+            u.uOpacity.value = Math.min(1, Math.sin(life * Math.PI) * 1.6) * (kind === 'smoke' ? 0.88 : 0.95);
+            u.uDark.value.copy(billowDark); u.uLight.value.copy(billowLight);
+            u.uSun.value.copy(sunDirW).transformDirection(camera.matrixWorldInverse);
+            u.uSunCol.value.copy(sun.color).multiplyScalar(Math.min(1.4, sun.intensity / 2.2));
+            u.uAmb.value.copy(hemiCol);
+            const dd = q.m.position.distanceTo(camera.position);
+            u.uFogCol.value.copy(scene.fog.color); u.uFog.value = K.clamp((dd - scene.fog.near) / Math.max(1, scene.fog.far - scene.fog.near), 0, 1);
+            continue;
+          }
           if (kind === 'smoke') q.m.material.color.copy(dark).lerp(light, Math.min(1, life * 1.4));
           q.m.material.opacity = Math.sin(life * Math.PI) * (kind === 'smoke' ? 0.6 : 0.95);
         }
       });
+    };
+    /**
+     * Nubes de volumen: una capa de nubes de verdad entre `altura` y `altura + grosor`, dibujada rayo a rayo (raymarching)
+     * con la luz del sol atravesándolas: cumbres brillantes, bases grises, bordes deshilachados y bruma con la distancia.
+     * La cámara puede volar por encima, por debajo o a través (una toma con h dentro de la capa). Deterministas: el viento
+     * las desplaza con t. opts: altura, grosor, cobertura (0-1), densidad, escala (tamaño de cada nube, en unidades),
+     * radio (alcance de la capa), viento [vx, vz] (unidades/s), color, seed, pasos (calidad).
+     */
+    W.nubes = ({altura = 260, grosor = 140, cobertura = 0.5, densidad = 1, escala = 420, radio = 5000, viento = [6, 2], color = null, seed = 3, pasos = 56} = {}) => {
+      const mat = new T.ShaderMaterial({
+        transparent: true, depthWrite: false, side: T.BackSide,
+        uniforms: {uY0: {value: altura}, uY1: {value: altura + grosor}, uCov: {value: K.clamp(cobertura, 0, 1)}, uDen: {value: densidad}, uScale: {value: 1 / escala}, uWind: {value: new T.Vector3()},
+          uSun: {value: sunDirW}, uSunCol: {value: new T.Color()}, uSky: {value: new T.Color(S.top || S.amb)}, uLow: {value: new T.Color(S.fog || S.low || '#ccc')}, uCol: {value: new T.Color(color || (S.night ? '#8d97ad' : '#ffffff'))},
+          uFogCol: {value: new T.Color()}, uFogFar: {value: 4000}, uSeed: {value: seed * 17.3}, uSteps: {value: pasos}},
+        vertexShader: `varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+        fragmentShader: `varying vec3 vW; uniform float uY0, uY1, uCov, uDen, uScale, uFogFar, uSeed, uSteps; uniform vec3 uWind, uSun, uSunCol, uSky, uLow, uCol, uFogCol;
+          float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+          float n3(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+                       mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
+          float dens(vec3 p) {
+            float hy = (p.y - uY0) / (uY1 - uY0);
+            if (hy < 0.0 || hy > 1.0) return 0.0;
+            vec3 q = (p + uWind) * uScale + uSeed;
+            // Forma grande (dónde hay nube) y detalle que la deshilacha; base plana y cumbre redondeada.
+            float big = n3(q * vec3(1.0, 1.6, 1.0)) * 0.62 + n3(q * 2.1) * 0.28 + n3(q * 4.3) * 0.1;
+            float prof = smoothstep(0.0, 0.12, hy) * smoothstep(1.0, 0.45, hy);
+            float d = big * prof - mix(0.74, 0.34, uCov);  // el ruido ronda 0,3-0,7: la cobertura fija qué parte supera el umbral
+            if (d <= 0.0) return 0.0;
+            d -= n3(q * 9.0 + 3.1) * 0.11 * (1.0 - d);
+            return max(0.0, d) * uDen * 3.2;
+          }
+          void main() {
+            vec3 ro = cameraPosition, rd = normalize(vW - cameraPosition);
+            // Tramo del rayo dentro de la capa (entre los dos planos), hasta el fondo de la caja.
+            float tA = (uY0 - ro.y) / rd.y, tB = (uY1 - ro.y) / rd.y;
+            float t0 = max(0.0, min(tA, tB)), t1 = min(max(tA, tB), length(vW - ro));
+            if (abs(rd.y) < 1e-4) { t0 = 0.0; t1 = length(vW - ro); if (ro.y < uY0 || ro.y > uY1) discard; }
+            if (t1 <= t0) discard;
+            t1 = min(t1, t0 + uFogFar * 1.2);
+            float n = uSteps, dt = (t1 - t0) / n, T = 1.0, hit = -1.0;
+            vec3 acc = vec3(0.0);
+            float j = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);  // reparto sin bandas
+            float mu = dot(rd, uSun), phase = 0.6 + 0.9 * pow(max(mu, 0.0), 6.0);  // brillo hacia el sol
+            for (int i = 0; i < 96; i++) {
+              if (float(i) >= n || T < 0.02) break;
+              vec3 p = ro + rd * (t0 + (float(i) + j) * dt);
+              float d = dens(p);
+              if (d > 0.002) {
+                if (hit < 0.0) hit = t0 + float(i) * dt;
+                // Sombra propia: cuánta nube hay hacia el sol.
+                float sh = 0.0; vec3 lp = p;
+                for (int k = 0; k < 4; k++) { lp += uSun * (uY1 - uY0) * 0.16; sh += dens(lp) * (0.6 + float(k) * 0.2); }
+                float hy = (p.y - uY0) / (uY1 - uY0);
+                vec3 lit = uCol * (uSunCol * exp(-sh * 0.45) * phase * (1.0 - exp(-d * 2.0) * 0.5) + mix(uLow * 0.55, uSky * 0.8, hy));
+                float a = 1.0 - exp(-d * dt * 0.02);
+                acc += T * a * lit; T *= 1.0 - a;
+              }
+            }
+            float alpha = 1.0 - T;
+            if (alpha < 0.01) discard;
+            vec3 col = acc / max(alpha, 1e-3);
+            float fog = hit > 0.0 ? clamp(hit / uFogFar, 0.0, 1.0) : 1.0;
+            col = mix(col, uFogCol, fog * fog);
+            gl_FragColor = vec4(col, alpha * (1.0 - fog * fog * 0.85));
+          }`,
+      });
+      const box = new T.Mesh(new T.BoxGeometry(radio * 2, grosor, radio * 2), mat);
+      box.position.y = altura + grosor / 2; box.renderOrder = 6; box.frustumCulled = false; box.userData.decor = true; box.userData.sinAO = true;
+      scene.add(box);
+      updaters.push((tt) => {
+        const u = mat.uniforms;
+        u.uWind.value.set(-viento[0] * tt, 0, -viento[1] * tt);
+        u.uSunCol.value.copy(sun.color).multiplyScalar(Math.min(1.6, sun.intensity / 1.8));
+        u.uFogCol.value.copy(scene.fog.color); u.uFogFar.value = Math.max(1500, scene.fog.far * 1.6);
+        box.position.x = camera.position.x; box.position.z = camera.position.z;  // la capa acompaña a la cámara
+      });
+      return box;
     };
     /* ---------------- movimiento con criterio: rutas a pie, formaciones y repartos sin choques ---------------- */
     /** Huella de una pieza en planta: centro, semiejes y giro (para esquivar y separar). */
@@ -1677,7 +1815,7 @@
     W.shake = (t, amount = 1) => shakes.push({t, a: amount});
 
     // Cámara: tomas [t, {lon, lat | x, z, dist, pitch, yaw}] con transición suave y deriva lenta.
-    const cam = {x: 0, z: 0, dist: 520, pitch: 52, yaw: 0, h: HL};
+    const cam = {x: 0, z: 0, dist: 520, pitch: 52, yaw: 0, h: HL, fov: camera.fov};
     // Las tomas también se guardan aquí: así la cámara se puede calcular en cualquier instante (subfotogramas del obturador).
     const camKeys = [], camBase = {...cam};
     const EASE = {linear: (p) => p, inOutSine: (p) => -(Math.cos(Math.PI * p) - 1) / 2, inSine: (p) => 1 - Math.cos((p * Math.PI) / 2), outSine: (p) => Math.sin((p * Math.PI) / 2),
@@ -1686,18 +1824,60 @@
       outExpo: (p) => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p)), inOutExpo: (p) => (p <= 0 ? 0 : p >= 1 ? 1 : p < 0.5 ? Math.pow(2, 20 * p - 10) / 2 : (2 - Math.pow(2, -20 * p + 10)) / 2)};
     const camAt = (ts) => {
       const c = {...camBase};
-      for (const k of camKeys) { if (ts < k.t) continue; const p = (EASE[k.ease] || EASE.inOutSine)(K.clamp((ts - k.t) / Math.max(1e-3, k.dur), 0, 1)); for (const n of ['x', 'z', 'dist', 'pitch', 'yaw', 'h']) c[n] = k.from[n] + (k.to[n] - k.from[n]) * p; }
+      for (const k of camKeys) { if (ts < k.t) continue; const p = (EASE[k.ease] || EASE.inOutSine)(K.clamp((ts - k.t) / Math.max(1e-3, k.dur), 0, 1)); for (const n of ['x', 'z', 'dist', 'pitch', 'yaw', 'h', 'fov']) c[n] = k.from[n] + (k.to[n] - k.from[n]) * p; }
       return c;
     };
     let camSet = false;
     /** Toma de cámara en t: centra el punto, a `dist` unidades, con inclinación `pitch` (grados sobre el suelo) y giro `yaw`. */
-    W.shot = (t, where, {dist = 260, pitch = 48, yaw = 0, h = HL, dur = 2.2, ease = 'inOutSine'} = {}) => {
+    W.shot = (t, where, {dist = 260, pitch = 48, yaw = 0, h = HL, dur = 2.2, ease = 'inOutSine', fov = null} = {}) => {
       const [x, z] = toXZ(where);
-      if (!camSet) { Object.assign(cam, {x, z, dist, pitch, yaw, h}); Object.assign(camBase, {x, z, dist, pitch, yaw, h}); camSet = true; W._last = {x, z, dist, pitch, yaw, h}; return; }
-      const a = W._last;
-      K.tl.add(cam, {x: [a.x, x], z: [a.z, z], dist: [a.dist, dist], pitch: [a.pitch, pitch], yaw: [a.yaw, yaw], h: [a.h, h], duration: K.ms(dur), ease}, K.ms(t));
-      camKeys.push({t, dur, ease, from: {...a}, to: {x, z, dist, pitch, yaw, h}}); camKeys.sort((p, q) => p.t - q.t);
-      W._last = {x, z, dist, pitch, yaw, h};
+      // fov (grados): el objetivo; sin él, el de la toma anterior (un golpe de zoom se mantiene hasta que otra toma lo cambie).
+      if (!camSet) { const f = fov ?? camera.fov; Object.assign(cam, {x, z, dist, pitch, yaw, h, fov: f}); Object.assign(camBase, {x, z, dist, pitch, yaw, h, fov: f}); camSet = true; W._last = {x, z, dist, pitch, yaw, h, fov: f}; return; }
+      const a = W._last, f = fov ?? a.fov;
+      K.tl.add(cam, {x: [a.x, x], z: [a.z, z], dist: [a.dist, dist], pitch: [a.pitch, pitch], yaw: [a.yaw, yaw], h: [a.h, h], fov: [a.fov, f], duration: K.ms(dur), ease}, K.ms(t));
+      camKeys.push({t, dur, ease, from: {...a}, to: {x, z, dist, pitch, yaw, h, fov: f}}); camKeys.sort((p, q) => p.t - q.t);
+      W._last = {x, z, dist, pitch, yaw, h, fov: f};
+    };
+    /** La toma vigente al final de todo lo programado (para encadenar movimientos que parten de ella). */
+    const lastShot = () => W._last || {...cam};
+    /**
+     * Barrido (whip pan): giro rapidísimo hacia otro punto; el obturador lo convierte en una estela de movimiento.
+     * Es una toma de ~0,3 s con aceleración y frenada bruscas; acepta las mismas opciones que W.shot.
+     */
+    W.barrido = (t, where, opts = {}) => W.shot(t, where, {...lastShot(), ...opts, dur: opts.dur ?? 0.32, ease: opts.ease || 'inOutExpo'});
+    /**
+     * Golpe de zoom (crash zoom): el objetivo se cierra de golpe sobre lo que se mira, sin mover la cámara, y da un
+     * pequeño latigazo al llegar. factor < 1 acerca (0,45 = más del doble), > 1 abre.
+     */
+    W.golpe = (t, {factor = 0.45, dur = 0.24} = {}) => {
+      const a = lastShot();
+      W.shot(t, {x: a.x, z: a.z}, {...a, dur, ease: 'outExpo', fov: K.clamp(a.fov * factor, 4, 100)});
+      shakes.push({t: t + dur * 0.7, a: 0.35});
+    };
+    /**
+     * Vértigo (dolly zoom): la cámara se aleja (factor > 1) o se acerca (< 1) mientras el objetivo compensa, de modo que lo
+     * que se mira mantiene su tamaño y el fondo se estira o se encoge alrededor.
+     */
+    const vertigos = [];
+    W.vertigo = (t, {factor = 2, dur = 2.5, ease = 'inOutSine'} = {}) => {
+      const a = lastShot(), dist = a.dist * factor;
+      const fov = (2 * Math.atan(Math.tan((a.fov * Math.PI) / 360) / factor) * 180) / Math.PI;
+      vertigos.push({t, dur, d0: a.dist, f0: a.fov});
+      W.shot(t, {x: a.x, z: a.z}, {...a, dist, fov, dur, ease});
+    };
+    /** Cámara en mano entre t0 y t1: vaivén suave e irregular, determinista. fuerza 1 = documental; 2 = nervioso. */
+    const handheld = [];
+    W.mano = (t0, t1, {fuerza = 1} = {}) => handheld.push({t0, t1, f: fuerza});
+    const handAt = (t, d) => {
+      let x = 0, y = 0, r = 0;
+      for (const q of handheld) {
+        if (t < q.t0 - 0.5 || t > q.t1 + 0.5) continue;
+        const k = q.f * d * 0.0035 * K.smooth(K.clamp(Math.min(t - q.t0 + 0.5, q.t1 + 0.5 - t), 0, 1));
+        x += k * (Math.sin(t * 1.31) * 0.6 + Math.sin(t * 2.97 + 1.3) * 0.3 + Math.sin(t * 7.1 + 0.4) * 0.1);
+        y += k * (Math.sin(t * 1.07 + 2.1) * 0.6 + Math.sin(t * 3.41 + 0.2) * 0.3 + Math.sin(t * 6.3 + 2.7) * 0.1);
+        r += (k / d) * 0.6 * Math.sin(t * 0.83 + 0.9);
+      }
+      return {x, y, r};
     };
     let drift = 2.5;
     /** Velocidad de giro lento de la cámara (grados por segundo; 0 = quieta). */
@@ -1825,14 +2005,21 @@
       const cam = sub ? sub.cam : camLive;
       // Cámara primero (el mar la necesita para el reflejo), con su seguridad y las sacudidas.
       const yaw = ((cam.yaw + (t - T0) * drift) * Math.PI) / 180, pitch = (K.clamp(cam.pitch, 2, 89) * Math.PI) / 180;
-      camera.near = Math.max(0.5, cam.dist / 60); camera.updateProjectionMatrix();
+      camera.near = Math.max(0.5, cam.dist / 60);
+      // Objetivo: el de la toma; durante un vértigo, el que mantiene el tamaño de lo que se mira a esa distancia.
+      let fov = cam.fov || camera.fov;
+      for (const v of vertigos) if (t >= v.t && t <= v.t + v.dur) fov = (2 * Math.atan((Math.tan((v.f0 * Math.PI) / 360) * v.d0) / cam.dist) * 180) / Math.PI;
+      camera.fov = fov; camera.updateProjectionMatrix();
       camera.position.set(cam.x + Math.sin(yaw) * Math.cos(pitch) * cam.dist, cam.h + Math.sin(pitch) * cam.dist, cam.z + Math.cos(yaw) * Math.cos(pitch) * cam.dist);
       lookAt.set(cam.x, cam.h, cam.z);
       camera.position.y += safeLift(t, camera.position, lookAt);
       let sx = 0, sy = 0;
       shakes.forEach((q, i) => { const a = t - q.t; if (a >= 0 && a < 0.7) { const k = q.a * Math.exp(-a * 7) * cam.dist * 0.006; sx += Math.sin(a * 61 + i * 1.7) * k; sy += Math.cos(a * 47 + i * 2.3) * k; } });
+      const hh = handheld.length ? handAt(t, cam.dist) : null;
+      if (hh) { sx += hh.x; sy += hh.y; }
       camera.position.x += sx; camera.position.y += sy;
       camera.lookAt(lookAt.x + sx * 0.5, lookAt.y + sy * 0.5, lookAt.z);
+      if (hh && hh.r) camera.rotateZ(hh.r);
       camera.updateMatrixWorld();
       // Profundidad de campo: la cámara se mueve por la apertura (disco de Vogel) y sigue mirando al punto enfocado.
       if (sub && sub.dof) {
@@ -1897,6 +2084,8 @@
       const a = camAt(t - span / 2), b = camAt(t + span / 2), d = Math.max(1, c0.dist), pxRad = K.W / ((camera.fov * Math.PI) / 180 * camera.aspect);
       let ang = pos(a, t - span / 2).distanceTo(pos(b, t + span / 2)) / d + Math.hypot(a.x - b.x, a.z - b.z, a.h - b.h) / d + (Math.abs(drift) * span * Math.PI) / 180;
       if (shakes.some((q) => t - q.t >= 0 && t - q.t < 0.7)) ang = Math.max(ang, 0.004);
+      ang += (Math.abs((a.fov || 0) - (b.fov || 0)) * Math.PI) / 180 / 2;  // un zoom también corre la imagen (por los bordes)
+      if (handheld.some((q) => t > q.t0 - 0.5 && t < q.t1 + 0.5)) ang = Math.max(ang, 0.0015);
       for (const o of objects) { if (o.parent !== scene || o.visible === false) continue; let v = speedOf(o, t); if ((o.userData.walking || []).some((w) => t >= w.t0 && t <= w.t1)) v = Math.max(v, 12); if (v) ang = Math.max(ang, (v * span) / d); }
       return ang * pxRad;
     };

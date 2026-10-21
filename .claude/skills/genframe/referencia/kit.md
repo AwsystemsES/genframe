@@ -90,12 +90,16 @@ const w = K.world3d(root, T0, T1, {ground: 'none'|'spain'|'iberia'|'europe'|'med
   exposure: 1.15,                                   // sube a 1.4-1.8 en escenas de noche o tormenta: TODO tiene que verse
   ocean: {waves: 6, length: 120, direction: 0, choppy: 1.6, color: '#2c5d8a', foamLevel: 0.62},   // mar con olas reales (solo con ground 'none'); además ondas (11), manchas (0.22), rizo (70), rizoFuerza (0.3)
   terrain: {coast: {z: -400, beach: 80, bluff: 40, bluffWidth: 70, cliff: false}, z: -900, roughness: 6, colors: {sand, grass, rock, wet}},  // tierra en z < coast.z, mar delante
-  clouds: {amount: 0.7, dark: false, height: 400, size: 300}});   // nubes volumétricas
+  clouds: {amount: 0.7, dark: false, height: 400, size: 300}});   // nubes de sprites (baratas, de fondo)
 const lancha = w.add('id-del-reparto', {x: 0, z: 0}, {rotate: 180});   // en terreno se apoya sola en el suelo
 w.float(lancha, {maxPitch: 12, maxRoll: 10});                     // flota con inercia: 6 puntos del casco, cabeceo y balanceo limitados
 w.frame(T0, lancha, {shot: 'general'|'conjunto'|'medio'|'cerrado'|'detalle', angle: 'frontal'|'tres_cuartos'|'lateral'|'espalda'|'picado'|'contrapicado'|'cenital', side: 1|-1});  // encuadre automático, PRIMERA toma sin animación
 w.frame(K.cue('rampa'), [lancha, soldado], {shot: 'cerrado', angle: 'tres_cuartos', dur: 1.4});   // siguientes: vuelo de cámara al nuevo encuadre
-w.shot(t, {x, z}, {dist, pitch, yaw, h, dur});                     // toma manual, solo si w.frame no basta
+w.shot(t, {x, z}, {dist, pitch, yaw, h, dur, fov});                // toma manual, solo si w.frame no basta (fov: objetivo en grados)
+w.barrido(t, {x, z}, {yaw, dist});                                  // barrido rápido (whip pan) hacia otro punto: el obturador lo deja en estela
+w.golpe(t, {factor: 0.45, dur: 0.24});                              // golpe de zoom (crash zoom) sobre lo que se mira, con latigazo
+w.vertigo(t, {factor: 2, dur: 2.5});                                // vértigo (dolly zoom): lo mirado no cambia de tamaño y el fondo se estira (>1) o se encoge (<1)
+w.mano(t0, t1, {fuerza: 1});                                        // cámara en mano: vaivén documental (2 = nervioso)
 w.drift(1.5);                                                       // giro lento continuo (grados/s); 0 = quieta
 w.pose(o, t, {hombro_der: {x: -80}}, 0.5);  w.act(o, 'andar', t0, t1, {rate: 1});   // articulaciones y acciones del reparto
 w.move(o, t, {x: 80, z: 0}, dur);  w.hide(o, t);  w.show(o, t);       // w.move: vehículos y barcos (dejan estela si flotan)
@@ -108,7 +112,9 @@ w.lago({x, z}, {radio | rx, rz, color, claro, orilla, irregular, seed, giro});  
 w.decorar('ciudad'|'campo'|'interior', {epoca: 'clasica'|'moderna', radio, manzana, calle, densidad, fondo, seed, colores, skyline: 'baja'|'media'|'alta', trafico: 0-1, peatones: 0-1});  // viste el entorno (ver abajo)
 w.country('fr', t, '#c84d3b');  w.label('Granada', [lon, lat], t, tFin, {style: 'pin'|'city'|'title', color});
 w.route([[lon, lat], …], t, dur, {color, arc: 0});
-w.fx('fire'|'smoke'|'explosion'|'rain'|'sparkle'|'fogonazo'|'columna', dónde, t0, t1, {size, cada, dir, material: 'arena'|'agua'|'tierra', shake, wind, offset});
+w.fx('fire'|'smoke'|'explosion'|'rain'|'sparkle'|'fogonazo'|'columna', dónde, t0, t1, {size, cada, dir, material: 'arena'|'agua'|'tierra', shake, wind, offset, color, plano});
+// 'fire' y 'smoke' son bocanadas con volumen iluminadas por el sol (borde revuelto, lado de sombra, núcleo del fuego de blanco a rojo); plano: true vuelve a los sprites planos.
+w.nubes({altura: 260, grosor: 140, cobertura: 0.5, escala: 420, viento: [6, 2], color, seed});  // nubes de volumen de verdad (raymarching con luz del sol); la cámara puede pasar por dentro (h dentro de la capa)
 // dónde: [lon, lat], {x, z, y} o UNA PIEZA o articulación (se ancla y la sigue). Con profundidad: lo que hay detrás de algo no se ve.
 // 'fogonazo' en la boca de un cañón (destello + luz, se repite «cada» s); 'columna' = impacto en el suelo o el agua (sube y cae, restos, marca).
 w.flow({x, y, z}, {x, y, z}, t0, t1, {color, n, spread, speed, size, opacity});
