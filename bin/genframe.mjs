@@ -103,6 +103,7 @@ function artOf(p) {
     palette, fonts: fontsOf({fonts: a.fonts || {title: 'Archivo Black', body: 'Inter', label: 'IBM Plex Mono', hand: 'Caveat'}}), skies: a.skies || {}, look: a.look || 'comic',
     background: {type: a.background?.type === 'gradient' ? 'gradient' : 'solid', from: palette.bg, to: palette.bg2, angle: a.background?.angle, grain: a.background?.grain},
     captions: p.plan.subtitulos === false ? {style: 'ninguno'} : (a.captions || {style: 'sombra'}), vignette: a.vignette ?? 0.2,
+    render: a.render || {},  // ajuste de la imagen final (posprocesado, obturador, película)
   };
 }
 
@@ -487,7 +488,7 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
       const res = await auditProject(p, out, {paso: Number(args.paso) || 0.5});
       if (res.graves.length && !args.forzar) die(`La auditoría encuentra ${res.graves.length} problemas graves: arréglalos o renderiza con --forzar.`);
     }
-    const mp4 = path.join(p.dir, name + '.mp4');
+    const mp4 = path.join(p.dir, path.basename(p.dir) + '.mp4');
     await run(HF, ['render', '--output', mp4, out], {cwd: out, maxBuffer: 1 << 28});
     console.log(`✔ ${mp4} · ${duration(p)} s de vídeo en ${((Date.now() - started) / 1000).toFixed(0)} s`);
   },

@@ -48,7 +48,7 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
    - `look` (comic, sa o clean);
    - `skies` (nombre → `{top, mid, low, fog, sun, sunI, amb, ambI, sea, land, elev, az, haze, night}`; con `fisico: true`, cielo físico según la altura del sol);
    - `look`: `'comic'`, `'sa'`, `'clean'` o `'realista'` (materiales físicos que reflejan el cielo, con variación y suciedad);
-   - `render` (opcional): ajuste de la imagen final `{supermuestreo, ao, bloom, grano, contraste, saturacion, calidez}`;
+   - `render` (opcional): ajuste de la imagen final `{supermuestreo, ao, bloom, grano, contraste, saturacion, calidez, subfotogramas, obturador, pelicula}`;
    - `background` (`{type, angle, grain}`), `captions` (`{style, highlight, text, background}`) y `vignette`.
 
    Escribe además, para ti, la idea visual del vídeo y las reglas de dibujo comunes. Nunca un vídeo en penumbra: aunque sea de noche, todo tiene que verse.

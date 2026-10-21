@@ -28,6 +28,45 @@
     return {...SKY_DEFAULTS, top: p.bg2 || p.bg || '#3d6fa8', mid: p.soft || '#9cc0e0', low: p.bg || '#e8eef4', fog: p.bg || '#d8e2ea', sun: '#fff4e0', amb: p.soft || '#9fb4cc', sea: p.accent2 || '#2f6c9e', land: p.soft || '#cdb98f'};
   };
 
+  /* Niebla de altura y perspectiva aérea para TODOS los materiales: se reescriben los fragmentos de niebla de Three.js.
+   * - Lo alto se despeja (las cumbres asoman sobre la bruma del valle).
+   * - Lo lejano toma el color del aire (azulado de día) en vez del gris de la niebla.
+   * - Niebla baja opcional, a ras de suelo, que crece con la distancia.
+   * Los parámetros son tres valores compartidos que cada escena fija antes de dibujarse (W.render). */
+  const GF1 = {x: 0, y: 400, z: 0.55, w: 0.6};   // base, caída (altura a la que la niebla baja a 1/e), cuánto se despeja lo alto, aire
+  const GF2 = {x: 0, y: 40, z: 0, w: 0};         // niebla baja: densidad, altura
+  const GFAIR = {x: 0.62, y: 0.72, z: 0.86};    // color del aire lejano
+  if (T.ShaderChunk && !T.ShaderChunk.__gfFog) {
+    T.ShaderChunk.__gfFog = true;
+    T.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n varying float vFogDepth;\n varying vec3 vFogWorld;\n#endif\n';
+    T.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n vFogDepth = - mvPosition.z;\n vFogWorld = (inverse(viewMatrix) * vec4(mvPosition.xyz, 1.0)).xyz;\n#endif\n';
+    T.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
+      uniform vec3 fogColor; varying float vFogDepth; varying vec3 vFogWorld; uniform vec4 gf1; uniform vec4 gf2; uniform vec3 gfAir;
+      #ifdef FOG_EXP2
+        uniform float fogDensity;
+      #else
+        uniform float fogNear; uniform float fogFar;
+      #endif
+    #endif
+    `;
+    T.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+      #ifdef FOG_EXP2
+        float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+        float gfFar = 1.0 / max(fogDensity, 1e-5);
+      #else
+        float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+        float gfFar = fogFar;
+      #endif
+      float gfY = max(0.0, vFogWorld.y - gf1.x);
+      fogFactor *= mix(1.0, exp(-gfY / max(1.0, gf1.y)), gf1.z);
+      float gfG = gf2.x * exp(-gfY / max(1.0, gf2.y)) * (1.0 - exp(-vFogDepth / max(1.0, gfFar * 0.3)));
+      fogFactor = clamp(max(fogFactor, gfG), 0.0, 1.0);
+      vec3 gfCol = mix(fogColor, gfAir, gf1.w * smoothstep(0.0, gfFar, vFogDepth));
+      gl_FragColor.rgb = mix( gl_FragColor.rgb, gfCol, fogFactor );
+    #endif
+    `;
+    for (const k of Object.keys(T.ShaderLib || {})) { const u = T.ShaderLib[k].uniforms; if (u && u.fogColor) { u.gf1 = {value: GF1}; u.gf2 = {value: GF2}; u.gfAir = {value: GFAIR}; } }
+  }
   // Material de cómic: tres tonos de luz y contorno negro por casco invertido.
   const toonRamp = (() => {
     const data = new Uint8Array([125, 125, 125, 255, 195, 195, 195, 255, 255, 255, 255, 255]);
@@ -285,14 +324,36 @@
     }
     composer.addPass(new T.OutputPass());
     if (cfg.bloom > 0) composer.addPass(new T.UnrealBloomPass(new T.Vector2(W / 2, H / 2), cfg.bloom, 0.5, 0.95));
+    // Etalonaje y capa de película en un solo pase: contraste, saturación, calidez y grano de siempre, más curva fílmica,
+    // halación (las luces fuertes se desbordan en rojo), vaivén de ventanilla, parpadeo, polvo y rayas, y virado de
+    // sombras y luces. Los valores los pone cada escena (preajuste de película) antes de dibujarse.
     const grade = new T.ShaderPass({
-      uniforms: {tDiffuse: {value: null}, contraste: {value: cfg.contraste}, saturacion: {value: cfg.saturacion}, calidez: {value: cfg.calidez}, grano: {value: cfg.grano}, semilla: {value: 0}},
+      uniforms: {tDiffuse: {value: null}, contraste: {value: cfg.contraste}, saturacion: {value: cfg.saturacion}, calidez: {value: cfg.calidez}, grano: {value: cfg.grano}, semilla: {value: 0},
+        curva: {value: 0}, halacion: {value: 0}, gate: {value: 0}, parpadeo: {value: 0}, polvo: {value: 0}, sepia: {value: 0}, sombras: {value: new T.Vector3(0, 0, 0)}, luces: {value: new T.Vector3(0, 0, 0)}, fr: {value: 0}, res: {value: new T.Vector2(W, H)}},
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float contraste, saturacion, calidez, grano, semilla; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float contraste, saturacion, calidez, grano, semilla, curva, halacion, gate, parpadeo, polvo, sepia, fr; uniform vec3 sombras, luces; uniform vec2 res; varying vec2 vUv;
         float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + semilla) * 43758.5453); }
-        void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 x = (c.rgb - 0.5) * contraste + 0.5;
+        float h2(vec2 p){ return fract(sin(dot(p, vec2(41.31, 289.17))) * 15731.743); }
+        void main(){
+          vec2 uv = vUv;
+          // Vaivén de ventanilla: la imagen tiembla unas décimas de píxel de un fotograma a otro.
+          uv += vec2(sin(fr * 1.7) + sin(fr * 0.73 + 2.0), sin(fr * 1.13 + 1.0) * 1.4) * gate * 0.6 / res;
+          vec4 c = texture2D(tDiffuse, uv); vec3 x = c.rgb;
+          // Halación: las zonas muy claras se desbordan hacia fuera con un borde rojizo, como en la película real.
+          if (halacion > 0.0) { vec3 acc = vec3(0.0); for (int i = 0; i < 12; i++) { float a = float(i) * 0.5236; vec2 o = vec2(cos(a), sin(a)) * (4.0 + mod(float(i), 3.0) * 4.0) / res * (res.x / 1920.0); vec3 sm = texture2D(tDiffuse, uv + o).rgb; float l = dot(sm, vec3(0.2126, 0.7152, 0.0722)); acc += sm * smoothstep(0.72, 1.0, l); } x += acc / 12.0 * vec3(1.0, 0.42, 0.22) * halacion; }
+          x = (x - 0.5) * contraste + 0.5;
+          // Curva fílmica: pie y hombro suaves (sombras que no se empastan, luces que no se queman).
+          x = mix(x, x * x * (3.0 - 2.0 * x), curva);
           float l = dot(x, vec3(0.2126, 0.7152, 0.0722)); x = mix(vec3(l), x, saturacion);
-          x += vec3(1.0, 0.4, -1.0) * calidez * 0.06; x += (h(floor(vUv * vec2(${W}.0, ${H}.0))) - 0.5) * grano;
+          x = mix(x, vec3(l) * vec3(1.07, 0.98, 0.82), sepia);
+          // Virado: color propio en sombras y en luces.
+          x += sombras * (1.0 - smoothstep(0.0, 0.5, l)) * 0.12 + luces * smoothstep(0.5, 1.0, l) * 0.1;
+          x += vec3(1.0, 0.4, -1.0) * calidez * 0.06;
+          x *= 1.0 + (h2(vec2(fr, 3.1)) - 0.5) * parpadeo;
+          // Polvo (motas claras y oscuras) y alguna raya vertical, distintos en cada fotograma.
+          if (polvo > 0.0) { vec2 cell = floor(uv * res / 6.0); float d = h2(cell + fr * 13.7); if (d > 1.0 - 0.0006 * polvo) x = mix(x, vec3(step(0.5, h2(cell * 1.3 + fr)) * 0.9 + 0.05), 0.75);
+            float sx = h2(vec2(fr, 7.0)); if (sx > 1.0 - 0.18 * polvo) { float px = abs(uv.x - h2(vec2(fr, 9.0))) * res.x; x = mix(x, vec3(0.85), (1.0 - smoothstep(0.4, 1.4, px)) * 0.35); } }
+          x += (h(floor(uv * vec2(${W}.0, ${H}.0))) - 0.5) * grano;
           gl_FragColor = vec4(clamp(x, 0.0, 1.0), c.a); }`,
     });
     composer.addPass(grade);
@@ -300,21 +361,39 @@
     composer.setSize(W, H);
     return (sharedPost = {composer, rp, gtao, grade, W, H});
   };
+  /** Preajustes de película (arte.render.pelicula o la opción pelicula de la escena). */
+  const PELICULAS = {
+    ninguna: {},
+    suave: {curva: 0.22, halacion: 0.18},
+    cine: {curva: 0.35, halacion: 0.32, gate: 0.4, grano: 0.03, sombras: [0.05, 0.25, 0.35], luces: [0.3, 0.12, -0.15]},
+    archivo: {curva: 0.45, halacion: 0.25, gate: 1.4, parpadeo: 0.08, polvo: 1, sepia: 0.75, grano: 0.06, saturacion: 0.6, contraste: 1.12},
+    noche: {curva: 0.3, halacion: 0.4, gate: 0.3, grano: 0.035, sombras: [-0.1, 0.15, 0.55], luces: [0.15, 0.2, 0.35], saturacion: 0.85},
+    calida: {curva: 0.3, halacion: 0.25, grano: 0.025, sombras: [0.15, 0.05, -0.05], luces: [0.35, 0.18, -0.1], calidez: 0.6},
+  };
   /** Dibuja la escena (con posprocesado si toca) y la copia, reducida, al lienzo de la escena. */
-  const drawFrame = (scene, camera, ctx2d, t, dist) => {
+  const drawFrame = (scene, camera, ctx2d, t, dist, sub = null) => {
     const pf = postFX(), r = shared();
     if (pf) {
       pf.rp.scene = scene; pf.rp.camera = camera;
       if (pf.gtao) { pf.gtao.scene = scene; pf.gtao.camera = camera; pf.gtao.updateGtaoMaterial({radius: Math.min(60, Math.max(2, dist * 0.025))}); }
       pf.grade.uniforms.semilla.value = (t * 37.31) % 1000;
-      const cfg = renderCfg(), g0 = scene.userData.grade || {}, set0 = (K.data && K.data.render) || {};
-      pf.grade.uniforms.contraste.value = set0.contraste ?? g0.contraste ?? cfg.contraste;
-      pf.grade.uniforms.saturacion.value = set0.saturacion ?? g0.saturacion ?? cfg.saturacion;
+      const cfg = renderCfg(), g0 = scene.userData.grade || {}, set0 = (K.data && K.data.render) || {}, U = pf.grade.uniforms;
+      const film = PELICULAS[scene.userData.pelicula || set0.pelicula || g0.pelicula || 'ninguna'] || {};
+      U.contraste.value = set0.contraste ?? film.contraste ?? g0.contraste ?? cfg.contraste;
+      U.saturacion.value = set0.saturacion ?? film.saturacion ?? g0.saturacion ?? cfg.saturacion;
+      U.calidez.value = set0.calidez ?? film.calidez ?? cfg.calidez;
+      U.grano.value = set0.grano ?? film.grano ?? cfg.grano;
+      for (const k of ['curva', 'halacion', 'gate', 'parpadeo', 'polvo', 'sepia']) U[k].value = film[k] ?? 0;
+      U.sombras.value.set(...(film.sombras || [0, 0, 0])); U.luces.value.set(...(film.luces || [0, 0, 0]));
+      U.fr.value = Math.round(t * (K.data.fps || 30));
       pf.composer.render();
     } else r.render(scene, camera);
-    ctx2d.clearRect(0, 0, K.W, K.H);
+    // Media de los subfotogramas: el primero pinta, los siguientes se mezclan con peso 1/(k+1).
+    if (!sub || sub.k === 0) ctx2d.clearRect(0, 0, K.W, K.H);
     ctx2d.imageSmoothingEnabled = true; ctx2d.imageSmoothingQuality = 'high';
+    ctx2d.globalAlpha = sub && sub.k > 0 ? 1 / (sub.k + 1) : 1;
     ctx2d.drawImage(r.domElement, 0, 0, K.W, K.H);
+    ctx2d.globalAlpha = 1;
   };
 
   /* ---------------------------------------------------------------- luz del entorno
@@ -451,7 +530,7 @@
   /** Mundos 3D creados en este vídeo (para el auditor). */
   K._worlds = [];
 
-  K.world3d = function (root, T0, T1, {bruma = null, manchas = true, ground = 'iberia', sky = null, land = null, sea = null, highlight = {}, tilt = true, look = K.data.look || 'comic', regions = false, glow = null, haze = null, ocean = null, terrain = null, clouds = null, exposure = 1.15, rim = 1} = {}) {
+  K.world3d = function (root, T0, T1, {bruma = null, manchas = true, foco = null, niebla = null, pelicula = null, ground = 'iberia', sky = null, land = null, sea = null, highlight = {}, tilt = true, look = K.data.look || 'comic', regions = false, glow = null, haze = null, ocean = null, terrain = null, clouds = null, exposure = 1.15, rim = 1} = {}) {
     LOOK = look;
     const S = skyOf(sky);
     const wrap = K.box(root, 0, 0, {w: K.W, h: K.H, style: {background: `linear-gradient(180deg, ${S.top} 0%, ${S.mid} 45%, ${S.low} 70%, ${S.fog} 100%)`, overflow: 'hidden'}});
@@ -479,7 +558,8 @@
       physSky.material.fog = false; scene.add(physSky);
     }
     scene.environment = skyEnvironment(S, physSky);
-    if (look === 'realista') scene.userData.grade = {contraste: S.night ? 1.08 : 1.12, saturacion: S.night ? 1.0 : 1.12};
+    if (look === 'realista') scene.userData.grade = {contraste: S.night ? 1.08 : 1.12, saturacion: S.night ? 1.0 : 1.12, pelicula: S.night ? 'noche' : 'suave'};
+    if (pelicula) scene.userData.pelicula = pelicula;
     scene.environmentIntensity = look === 'realista' || look === 'clean' ? 1 : 0.6;
     if (postFX() && !physSky) scene.background = skyBackground(S);    const camera = new T.PerspectiveCamera(K.vertical ? 62 : 38, K.W / K.H, 1, 6000);
     let sunSprite = null;
@@ -1597,13 +1677,25 @@
 
     // Cámara: tomas [t, {lon, lat | x, z, dist, pitch, yaw}] con transición suave y deriva lenta.
     const cam = {x: 0, z: 0, dist: 520, pitch: 52, yaw: 0, h: HL};
+    // Las tomas también se guardan aquí: así la cámara se puede calcular en cualquier instante (subfotogramas del obturador).
+    const camKeys = [], camBase = {...cam};
+    const EASE = {linear: (p) => p, inOutSine: (p) => -(Math.cos(Math.PI * p) - 1) / 2, inSine: (p) => 1 - Math.cos((p * Math.PI) / 2), outSine: (p) => Math.sin((p * Math.PI) / 2),
+      inQuad: (p) => p * p, outQuad: (p) => 1 - (1 - p) * (1 - p), inOutQuad: (p) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2),
+      inCubic: (p) => p * p * p, outCubic: (p) => 1 - Math.pow(1 - p, 3), inOutCubic: (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
+      outExpo: (p) => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p)), inOutExpo: (p) => (p <= 0 ? 0 : p >= 1 ? 1 : p < 0.5 ? Math.pow(2, 20 * p - 10) / 2 : (2 - Math.pow(2, -20 * p + 10)) / 2)};
+    const camAt = (ts) => {
+      const c = {...camBase};
+      for (const k of camKeys) { if (ts < k.t) continue; const p = (EASE[k.ease] || EASE.inOutSine)(K.clamp((ts - k.t) / Math.max(1e-3, k.dur), 0, 1)); for (const n of ['x', 'z', 'dist', 'pitch', 'yaw', 'h']) c[n] = k.from[n] + (k.to[n] - k.from[n]) * p; }
+      return c;
+    };
     let camSet = false;
     /** Toma de cámara en t: centra el punto, a `dist` unidades, con inclinación `pitch` (grados sobre el suelo) y giro `yaw`. */
     W.shot = (t, where, {dist = 260, pitch = 48, yaw = 0, h = HL, dur = 2.2, ease = 'inOutSine'} = {}) => {
       const [x, z] = toXZ(where);
-      if (!camSet) { Object.assign(cam, {x, z, dist, pitch, yaw, h}); camSet = true; W._last = {x, z, dist, pitch, yaw, h}; return; }
+      if (!camSet) { Object.assign(cam, {x, z, dist, pitch, yaw, h}); Object.assign(camBase, {x, z, dist, pitch, yaw, h}); camSet = true; W._last = {x, z, dist, pitch, yaw, h}; return; }
       const a = W._last;
       K.tl.add(cam, {x: [a.x, x], z: [a.z, z], dist: [a.dist, dist], pitch: [a.pitch, pitch], yaw: [a.yaw, yaw], h: [a.h, h], duration: K.ms(dur), ease}, K.ms(t));
+      camKeys.push({t, dur, ease, from: {...a}, to: {x, z, dist, pitch, yaw, h}}); camKeys.sort((p, q) => p.t - q.t);
       W._last = {x, z, dist, pitch, yaw, h};
     };
     let drift = 2.5;
@@ -1727,7 +1819,9 @@
         b.material.opacity = (o.userData.decor ? 0.28 : 0.4) * Math.exp(-lift / 12);
       }
     };
-    const render = (t) => {
+    const camLive = cam;
+    const render = (t, sub = null) => {
+      const cam = sub ? sub.cam : camLive;
       // Cámara primero (el mar la necesita para el reflejo), con su seguridad y las sacudidas.
       const yaw = ((cam.yaw + (t - T0) * drift) * Math.PI) / 180, pitch = (K.clamp(cam.pitch, 2, 89) * Math.PI) / 180;
       camera.near = Math.max(0.5, cam.dist / 60); camera.updateProjectionMatrix();
@@ -1739,6 +1833,14 @@
       camera.position.x += sx; camera.position.y += sy;
       camera.lookAt(lookAt.x + sx * 0.5, lookAt.y + sy * 0.5, lookAt.z);
       camera.updateMatrixWorld();
+      // Profundidad de campo: la cámara se mueve por la apertura (disco de Vogel) y sigue mirando al punto enfocado.
+      if (sub && sub.dof) {
+        const right = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1), dir = camera.getWorldDirection(new T.Vector3());
+        const tgt = sub.focoObj ? (sub.focoObj.isObject3D ? sub.focoObj.getWorldPosition(new T.Vector3()) : new T.Vector3(sub.focoObj.x, sub.focoObj.y ?? 0, sub.focoObj.z)) : lookAt;
+        const fd = Math.max(1, tgt.clone().sub(camera.position).dot(dir)), fp = camera.position.clone().addScaledVector(dir, fd);
+        const rr = Math.sqrt((sub.k + 0.5) / sub.n) * sub.dof, th = sub.k * 2.39996;
+        camera.position.addScaledVector(right, Math.cos(th) * rr).addScaledVector(up, Math.sin(th) * rr); camera.lookAt(fp); camera.updateMatrixWorld();
+      }
       // Bruma antes que el mar (el agua se dimensiona para llegar más allá de ella) y plano lejano que nunca la recorta.
       if (haze || S.haze) { const far = Math.max(cam.dist * (haze || S.haze), 420); scene.fog.near = far * 0.08; scene.fog.far = far; }
       else { scene.fog.near = cam.dist * 1.4; scene.fog.far = cam.dist * 4.5; }
@@ -1769,7 +1871,13 @@
       if (S.night) objects.forEach((o) => o.traverse((n) => { if (n.material && n.material.emissiveMap) n.material.emissiveIntensity = 1.4; }));
       if (ground === 'none') contactShadows();
       if (physSky) { physSky.scale.setScalar(camera.far * 0.9); physSky.position.copy(camera.position); }
-      drawFrame(scene, camera, ctx2d, t, cam.dist);
+      // Niebla de altura y aire lejano de esta escena (valores compartidos por todos los materiales).
+      { const nb = niebla || S.niebla || {}, no = typeof nb === 'object' ? nb : {densidad: nb}; GF1.x = 0; GF1.y = no.caida ?? Math.max(120, cam.dist * 0.5); GF1.z = no.despeje ?? 0.55; GF1.w = no.aire ?? (S.night ? 0.25 : 0.6); GF2.x = no.densidad ?? 0; GF2.y = no.altura ?? 40; const ac = new T.Color(S.mid || S.fog).lerp(new T.Color(S.top || S.fog), 0.35); GFAIR.x = ac.r; GFAIR.y = ac.g; GFAIR.z = ac.b; }
+      // Antialiasing: cada subfotograma se desplaza una fracción de píxel (secuencia de Halton).
+      if (sub && sub.n > 1) { const sz = renderer.getSize(new T.Vector2()), hal = (i, b) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; }; camera.setViewOffset(sz.x, sz.y, hal(sub.k + 1, 2) - 0.5, hal(sub.k + 1, 3) - 0.5, sz.x, sz.y); }
+      drawFrame(scene, camera, ctx2d, sub ? sub.tMain : t, cam.dist, sub);
+      if (sub && sub.n > 1) camera.clearViewOffset();
+      if (sub && !sub.last) return;
       if (glowCtx) { glowCtx.clearRect(0, 0, K.W / 4, K.H / 4); glowCtx.filter = 'brightness(1.1) contrast(1.6)'; glowCtx.drawImage(renderer.domElement, 0, 0, K.W / 4, K.H / 4); }
       for (const g of tags) {
         if (g.obj) { g.obj.getWorldPosition(tmp); tmp.y += g.y; } else tmp.copy(g.p);
@@ -1779,7 +1887,31 @@
         g.el.style.visibility = tmp.z < 1 ? 'visible' : 'hidden';
       }
     };
-    K.onFrame((t) => { if (t >= T0 - 0.8 && t <= T1 + 0.1) render(t); });
+    /* Obturador: con calidad alta, cada fotograma es la media de varios subfotogramas repartidos en medio fotograma (180°):
+     * desenfoque de movimiento real de la cámara y de lo que se mueve, profundidad de campo (opción foco) y antialiasing.
+     * Solo se reparte cuando algo se mueve de verdad en pantalla o hay foco: un plano quieto se dibuja una vez. */
+    const isMoving = (t, span, c0) => {
+      const pos = (c, ts) => { const y = ((c.yaw + (ts - T0) * drift) * Math.PI) / 180, p = (K.clamp(c.pitch, 2, 89) * Math.PI) / 180; return new T.Vector3(c.x + Math.sin(y) * Math.cos(p) * c.dist, c.h + Math.sin(p) * c.dist, c.z + Math.cos(y) * Math.cos(p) * c.dist); };
+      // Devuelve cuántos píxeles se desplaza la imagen durante el obturador (0 si nada se mueve).
+      const a = camAt(t - span / 2), b = camAt(t + span / 2), d = Math.max(1, c0.dist), pxRad = K.W / ((camera.fov * Math.PI) / 180 * camera.aspect);
+      let ang = pos(a, t - span / 2).distanceTo(pos(b, t + span / 2)) / d + Math.hypot(a.x - b.x, a.z - b.z, a.h - b.h) / d + (Math.abs(drift) * span * Math.PI) / 180;
+      if (shakes.some((q) => t - q.t >= 0 && t - q.t < 0.7)) ang = Math.max(ang, 0.004);
+      for (const o of objects) { if (o.parent !== scene || o.visible === false) continue; let v = speedOf(o, t); if ((o.userData.walking || []).some((w) => t >= w.t0 && t <= w.t1)) v = Math.max(v, 12); if (v) ang = Math.max(ang, (v * span) / d); }
+      return ang * pxRad;
+    };
+    const renderMain = (t) => {
+      const cfg = renderCfg(), N0 = postFX() ? Math.max(1, Math.round(cfg.subfotogramas ?? 5)) : 1, fps = K.data.fps || 30, span = (cfg.obturador ?? 0.5) / fps;
+      const fo = foco ? (typeof foco === 'object' ? foco : {apertura: foco}) : null, dof = fo && postFX() && N0 > 1 ? K.clamp(fo.apertura ?? 0.5, 0, 1) * camLive.dist * 0.03 : 0;
+      // Subfotogramas según lo que se mueve la imagen (uno cada ~2,5 píxeles de recorrido, hasta 17); con foco, 17.
+      let n = 1;
+      if (N0 > 1) { const px = isMoving(t, span, camLive); if (dof) n = 17; else if (px > 1.2) n = K.clamp(Math.ceil(px / 2.5), N0, 17); }  // subfotogramas: 1 lo apaga todo
+      if (n === 1) return render(t);
+      if (n % 2 === 0) n++;
+      // El subfotograma del centro (exactamente t) va el último: deja la escena en t para la auditoría y los rótulos.
+      const order = [...Array(n).keys()].filter((k) => k !== (n - 1) / 2).concat([(n - 1) / 2]);
+      order.forEach((k, i) => { const ts = t + (k / (n - 1) - 0.5) * span; render(ts, {k: i, n, tMain: t, last: i === n - 1, dof, focoObj: fo && fo.objetivo, cam: k === (n - 1) / 2 ? camLive : camAt(ts)}); });
+    };
+    K.onFrame((t) => { if (t >= T0 - 0.8 && t <= T1 + 0.1) renderMain(t); });
     W.render = render;
     /**
      * Auditoría física del fotograma t (después de dibujarlo): piezas que se atraviesan, cámara dentro del agua, del
