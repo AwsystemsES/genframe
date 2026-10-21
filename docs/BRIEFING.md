@@ -84,7 +84,9 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `validar <nombre>` | Monta y lista los errores de ejecución por escena o pieza. |
 | `fotos <nombre> --en=1.2,3 \| --escena=<id> \| --todas` | Capturas con su `hoja.jpg`, marcando brillo medio, «dibujo» por tercios verticales, ⚠ OSCURA (brillo < 48), ⚠ CENTRO VACÍO (vertical) y ⚠ igual que otra captura. |
 | `audio <nombre>` | `sonido.json` (música de `plan.sonido.musica`, efectos atados a palabras y ambientes por escena) y `audio.py` → `mix.wav` a −14 LUFS. |
-| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo montado en el Chrome de HyperFrames con `puppeteer-core` y lista los problemas físicos y visuales. Deja `auditoria.json`; ver la skill. |
+| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo montado en el Chrome de HyperFrames con `puppeteer-core` y lista los problemas físicos y visuales, y las cifras en pantalla que no dice el guion (`src/cifras.mjs`). Deja `auditoria.json`; ver la skill. |
+| `afinar <nombre>` | Ajuste acústico de `palabras.json` con la energía de `voz.mp3` (`src/onsets.py`); lo hace `voz`. |
+| `revisar <nombre>` | Destellos, negros y congelados en el MP4 final; lo hace `render`. |
 | `render <nombre> [--forzar] [--tramos=0\|<s>] [--rehacer]` | Audio, montaje, validación, auditoría y `hyperframes render` → `proyectos/<nombre>/<nombre>.mp4`. Con problemas graves no renderiza. Más de 90 s: por tramos con caché en `tramos/` (solo se rehacen los tramos cuya huella cambió). |
 
 Formato de `plan.json`:
@@ -254,6 +256,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    - **Realismo (20-10, tras auditar el vídeo de Ogallala):** anatomía real de los cuadrúpedos y acción `montar` para jinetes; en `'realista'`, variación de tono y brillo, suciedad a ras de suelo y etalonaje propio; suelo con manchas a gran escala y arboledas en el horizonte; `w.lago` y `w.rio`; `f.gen.montana`; sombras 4096 con alcance según el plano y bruma baja (`bruma`).
    - **Imagen de cine (22-10, ideas estudiadas en Frontier y reescritas):** obturador con subfotogramas (desenfoque de movimiento real, antialiasing, adaptativo según el movimiento), profundidad de campo (`foco`), capa de película (`pelicula`: curva fílmica, halación, vaivén, parpadeo, polvo, virado) y niebla de altura con perspectiva aérea en todos los materiales (`niebla`). Arreglado: `arte.render` no llegaba a la página, y el MP4 de un proyecto pasado por ruta se guardaba en una carpeta equivocada.
    - **Render por tramos (22-10):** los vídeos de más de 90 s se renderizan en tramos de ~45 s con huella y caché; cambiar una escena rehace solo su tramo. Comprobado fotograma a fotograma contra el render entero (misma imagen salvo el grano).
+   - **Verdad en pantalla y tiempos (22-10):** el auditor avisa de cada cifra en pantalla que el guion no dice; `voz` ajusta a la voz real los bordes de palabra junto a las pausas (ElevenLabs los daba ~100 ms tarde: el resalte del subtítulo y los efectos se adelantaban a la voz); `render` revisa el MP4 final (destellos, negros, congelados).
    - **Limpieza (20-10):** a petición del usuario se retiraron el banco de pruebas (`pruebas/`, `npm test`), los vídeos de referencia, la historia del laboratorio y de Autake, y los recursos que el motor no usaba (HDRI, texturas, la Tierra de la NASA, Natural Earth en shapefiles). Siguen en el historial de git si alguna vez hacen falta.
 4. **Generadores pendientes:** aviones, edificios protagonistas, vegetación variada, animales y personajes 2D; decoraciones `'industrial'`, `'carretera'`, `'puerto'` y `'oficial'`.
 5. **Mejoras de la herramienta:**

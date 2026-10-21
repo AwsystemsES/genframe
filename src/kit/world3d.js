@@ -241,6 +241,7 @@
    * lo marca en userData.letreroAviso (la mesa y el auditor lo avisan): acorta el texto o agranda el cartel.
    */
   const letreroTexture = (texto, {ancho = 40, alto = 10, fondo = '#1c2e45', color = '#ffffff', fuente = 'Inter, Helvetica, Arial, sans-serif', peso = 800, margen = 0.1, lineas = 2, borde = null, interlinea = 1.12, alinear = 'center', minimo = 1} = {}) => {
+    (K._textos3d = K._textos3d || new Set()).add(String(texto));  // la auditoría contrasta sus cifras con el guion
     const pxu = Math.min(32, 2048 / Math.max(ancho, alto)), W = Math.max(8, Math.round(ancho * pxu)), H = Math.max(8, Math.round(alto * pxu));
     const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
     if (fondo) { x.fillStyle = fondo; x.fillRect(0, 0, W, H); }

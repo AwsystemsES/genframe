@@ -26,15 +26,17 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 |---|---|
 | `nuevo <nombre> [16:9\|9:16]` | Crea el proyecto. |
 | `voces` | Lista las voces de ElevenLabs (id, nombre, etiquetas). |
-| `voz <nombre> [--voz=ID] [--modelo=eleven_multilingual_v2]` | Locuta `guion.txt` → `voz.mp3` + `palabras.json` (palabras con su instante). Dice lo que cuesta. |
+| `voz <nombre> [--voz=ID] [--modelo=eleven_multilingual_v2]` | Locuta `guion.txt` → `voz.mp3` + `palabras.json` (palabras con su instante). Dice lo que cuesta. Después ajusta a la voz real los bordes de las palabras junto a cada pausa (ElevenLabs los marca unos 100 ms tarde); los tiempos originales quedan en `palabras.eleven.json`. |
+| `afinar <nombre>` | Repite ese ajuste acústico en un proyecto con voz ya hecha (siempre desde `palabras.eleven.json`). No gasta nada. |
 | `frases <nombre>` | Frases numeradas con su tramo en segundos: con esto repartes las escenas. |
 | `palabras <nombre> [desde] [hasta]` | Palabras con su instante, para sincronizar con `K.cue`. |
 | `mesa <nombre> <pieza>` | Fotografía una pieza en un estudio neutro: 4 vistas y su medida real (10 unidades = 1 m). |
 | `validar <nombre>` | Monta el proyecto y lista los errores de ejecución por escena. |
-| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, escenas que tapan los subtítulos, la capa común o la viñeta, tramos de más de 2 s casi quietos y fotogramas oscuros. Deja `auditoria.json`. |
+| `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, escenas que tapan los subtítulos, la capa común o la viñeta, tramos de más de 2 s casi quietos, fotogramas oscuros y **cifras en pantalla que el guion no dice** (textos y rótulos 3D; entiende números con letras en inglés y español, años, décadas y precios, y no avisa de marcas de ejes, coordenadas, numeraciones ni códigos). Deja `auditoria.json`. Un aviso de cifra es un dato que hay que comprobar: o falta en el guion o está mal en pantalla. |
 | `fotos <nombre> --escena=<id> \| --todas \| --en=1.2,3` | Capturas para revisar; marca las oscuras, las de centro vacío y las repetidas. Deja `hoja.jpg`. |
 | `audio <nombre>` | Música compuesta, efectos y ambientes atados a palabras, mezcla a −14 LUFS. |
-| `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). Si el vídeo dura más de 90 s, renderiza **por tramos con caché** (~45 s, empezando en una escena, en `proyectos/<nombre>/tramos/`): cada tramo lleva la huella de todo lo que le afecta (motor, arte, piezas, capa común, sus escenas y palabras) y solo se rehacen los que cambiaron; se unen sin recomprimir. `--tramos=0` lo desactiva, `--tramos=<s>` cambia la longitud y `--rehacer` los rehace todos. |
+| `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). Si el vídeo dura más de 90 s, renderiza **por tramos con caché** (~45 s, empezando en una escena, en `proyectos/<nombre>/tramos/`): cada tramo lleva la huella de todo lo que le afecta (motor, arte, piezas, capa común, sus escenas y palabras) y solo se rehacen los que cambiaron; se unen sin recomprimir. `--tramos=0` lo desactiva, `--tramos=<s>` cambia la longitud y `--rehacer` los rehace todos. Al final revisa el MP4 (como `revisar`). |
+| `revisar <nombre>` | Revisa el MP4 final fotograma a fotograma: destellos de uno o dos fotogramas, más de medio segundo en negro y más de 3 s congelado. |
 
 Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `auditar /ruta/a/otra/carpeta`).
 

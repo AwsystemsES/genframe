@@ -18,6 +18,7 @@ import {execFile} from 'child_process';
 import {promisify} from 'util';
 import {fileURLToPath} from 'url';
 import {createRequire} from 'module';
+import {unspoken} from '../src/cifras.mjs';
 import crypto from 'crypto';
 
 const run = promisify(execFile);
@@ -179,6 +180,40 @@ function chunks(text, max = 4000) {
   return out;
 }
 
+/** Tiempos acústicos: lleva a la voz real los bordes de las palabras que lindan con una pausa (ver src/onsets.py). */
+async function tune(p) {
+  const {stdout} = await run(PYTHON, [path.join(ROOT, 'src/onsets.py'), path.join(p.dir, 'voz.mp3'), path.join(p.dir, 'palabras.json'), FFMPEG], {maxBuffer: 1 << 24});
+  console.log('✔ palabras.json · ' + stdout.trim());
+}
+
+/**
+ * Revisión del MP4 final, fotograma a fotograma: destellos de un solo fotograma (un negro o un blanco colado), tramos en
+ * negro y vídeo congelado. Son fallos que solo existen en el MP4 (unión de tramos, un fotograma que no cargó…).
+ */
+async function checkMp4(mp4, fps = 30) {
+  const tmp = mp4 + '.stats';
+  await run(FFMPEG, ['-v', 'error', '-i', mp4, '-an', '-vf', `scale=160:-2,format=gray,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=${tmp}`, '-f', 'null', '-'], {maxBuffer: 1 << 24});
+  const y = fs.readFileSync(tmp, 'utf8').split('\n').filter((l) => l.includes('YAVG')).map((l) => parseFloat(l.split('=')[1]));
+  fs.rmSync(tmp, {force: true});
+  const out = [], tc = (i) => `${Math.floor(i / fps / 60)}:${String(Math.floor(i / fps) % 60).padStart(2, '0')}.${String(Math.round(((i / fps) % 1) * 100)).padStart(2, '0')}`;
+  // Destello: un fotograma (o dos) muy distinto de sus vecinos, que a su vez se parecen entre sí. Un corte no lo es (no vuelve).
+  for (let i = 1; i + 2 < y.length; i++) {
+    for (const w of [1, 2]) {
+      const a = y[i - 1], b = y[i + w], mid = y.slice(i, i + w);
+      if (Math.abs(a - b) < 6 && mid.every((m) => Math.abs(m - a) > 28)) { out.push(`destello de ${w} fotograma${w > 1 ? 's' : ''} en ${tc(i)} (brillo ${a.toFixed(0)} → ${mid[0].toFixed(0)} → ${b.toFixed(0)})`); i += w; break; }
+    }
+  }
+  // Negro: más de medio segundo seguido casi negro.
+  let k0 = null;
+  for (let i = 0; i <= y.length; i++) { const dark = i < y.length && y[i] < 8; if (dark && k0 === null) k0 = i; if (!dark && k0 !== null) { if (i - k0 > fps / 2) out.push(`${((i - k0) / fps).toFixed(1)} s en negro desde ${tc(k0)}`); k0 = null; } }
+  // Congelado: freezedetect de ffmpeg (más de 3 s sin un solo cambio de imagen).
+  try {
+    const {stderr} = await run(FFMPEG, ['-v', 'info', '-i', mp4, '-an', '-vf', 'scale=320:-2,freezedetect=n=0.0015:d=3', '-f', 'null', '-'], {maxBuffer: 1 << 26});
+    for (const m of stderr.matchAll(/freeze_start: ([\d.]+)[\s\S]*?freeze_duration: ([\d.]+)/g)) out.push(`congelado ${(+m[2]).toFixed(1)} s desde ${tc(+m[1] * fps)}`);
+  } catch (e) { /* sin freezedetect, sin esa comprobación */ }
+  return {frames: y.length, out};
+}
+
 async function voice(p, args) {
   const text = (p.read('guion.txt') || '').trim();
   if (!text) die('guion.txt está vacío.');
@@ -217,6 +252,8 @@ async function voice(p, args) {
   await run(FFMPEG, ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list, '-c:a', 'libmp3lame', '-b:a', '192k', path.join(p.dir, 'voz.mp3')]);
   fs.writeFileSync(path.join(p.dir, 'palabras.json'), JSON.stringify(words));
   fs.rmSync(tmp, {recursive: true, force: true});
+  fs.rmSync(path.join(p.dir, 'palabras.eleven.json'), {force: true});  // voz nueva: los tiempos de ElevenLabs de ahora son los buenos
+  await tune(p);
   const price = model.startsWith('eleven_flash') || model.startsWith('eleven_turbo') ? 0.04 : 0.08;
   console.log(`✔ voz.mp3 (${offset.toFixed(1)} s) y palabras.json (${words.length} palabras) · modelo ${model} · ${chars} caracteres ≈ ${(chars / 1000 * price).toFixed(2)} $`);
 }
@@ -252,7 +289,7 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
   const browser = await puppeteer.launch({executablePath: findChrome(), headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : []), '--allow-file-access-from-files', '--autoplay-policy=no-user-gesture-required']});
   const shots = path.join(p.dir, 'auditoria');
   fs.rmSync(shots, {recursive: true, force: true}); fs.mkdirSync(shots, {recursive: true});
-  const issues = [];
+  const issues = [], seen = new Map();
   try {
     const page = await browser.newPage();
     await page.setViewport({width: fmtW, height: fmtH, deviceScaleFactor: 0.25});
@@ -288,13 +325,29 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
           const fixed = [['la viñeta', document.getElementById('fx')], ['la capa común', document.getElementById('overlay')], ...[...document.querySelectorAll('#root > .cap')].filter(vis).map((c) => ['los subtítulos', c])].filter(([, el]) => vis(el));
           const scenesZ = [...document.querySelectorAll('#root > section.scene')].filter(vis);
           for (const [name, el] of fixed) { const over = scenesZ.find((sc) => z(sc) >= z(el)); if (over) res.push({tipo: 'capas', grave: true, texto: `la escena tapa ${name} (orden de apilado)`, escena: over.id.replace('sc-', '')}); } }
-        return res;
+        // Textos a la vista (sin subtítulos): sus cifras se contrastan con el guion.
+        const textos = [...document.querySelectorAll('#root > section.scene, #overlay')].filter((s) => s.style.display !== 'none').map((s) => [s.id.replace('sc-', ''), s.innerText || '']).filter(([, x]) => /\d\d/.test(x));
+        return {res, textos};
       }, t);
-      for (const q of found) issues.push({...q, t});
+      for (const q of found.res) issues.push({...q, t});
+      for (const [esc, x] of found.textos) for (const l of x.split('\n')) if (/\d\d/.test(l)) { const k = esc + '|' + l; if (!seen.has(k)) seen.set(k, {escena: esc, texto: l, t}); }
       await page.screenshot({path: path.join(shots, `f${String(i).padStart(5, '0')}.jpg`), type: 'jpeg', quality: 60});
       if (!silencio && i % 40 === 0) process.stdout.write(`  auditando ${t.toFixed(1)} / ${dur.toFixed(1)} s\r`);
     }
     for (const e of errs) issues.push({tipo: 'error', grave: true, texto: 'error en la página: ' + e, t: 0, escena: '?'});
+    // Verdad en pantalla: toda cifra que se ve (textos y rótulos 3D) tiene que decirla el guion.
+    const guion = p.read('guion.txt', '');
+    if (guion.trim()) {
+      for (const x of await page.evaluate(() => [...((window.K && K._textos3d) || [])])) if (/\d\d/.test(x) && !seen.has('3d|' + x)) seen.set('3d|' + x, {escena: 'rótulo 3D', texto: x, t: 0});
+      const miss = [...seen.values()].flatMap((v) => unspoken([v.texto], guion).map(({tok}) => ({...v, tok, n: Number(tok.replace(/,/g, ''))})));
+      // Las marcas de un eje o una escala (200, 400, 600 FT) no son datos: tres o más a paso fijo en una escena no avisan.
+      const ticks = new Set();
+      for (const esc of new Set(miss.map((x) => x.escena))) {
+        const ns = [...new Set(miss.filter((x) => x.escena === esc && Number.isFinite(x.n)).map((x) => x.n))].sort((a, b) => a - b);
+        for (let k = 0; k + 2 < ns.length; k++) if (Math.abs(ns[k + 1] - ns[k] - (ns[k + 2] - ns[k + 1])) < 1e-9) [ns[k], ns[k + 1], ns[k + 2]].forEach((n) => ticks.add(esc + '|' + n));
+      }
+      for (const x of miss) if (!ticks.has(x.escena + '|' + x.n)) issues.push({tipo: 'cifra', grave: false, texto: `la cifra «${x.tok}» («${x.texto.trim().slice(0, 50)}») no está en el guion: compruébala`, t: x.t, escena: x.escena});
+    }
   } finally { await browser.close(); }
   // Píxeles: brillo de cada muestra y diferencia con la anterior.
   const stats = path.join(shots, 'stats.txt');
@@ -317,7 +370,7 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
   luma.forEach((v, i) => { if (v < 40) issues.push({tipo: 'oscuro', grave: false, texto: `fotograma oscuro (brillo ${v.toFixed(0)}): sube la exposición o aclara la paleta`, t: r3(i * paso), escena: sceneAt(i * paso)}); });
   // Agrupa lo repetido en tramos.
   const groups = new Map();
-  for (const q of issues) { const k = q.escena + '|' + q.tipo + '|' + q.texto.replace(/\d+([.,]\d+)?/g, '#'); if (!groups.has(k)) groups.set(k, {...q, desde: q.t, hasta: q.t, n: 0}); const g = groups.get(k); g.desde = Math.min(g.desde, q.t); g.hasta = Math.max(g.hasta, q.t); g.n++; g.grave = g.grave || q.grave; }
+  for (const q of issues) { const k = q.escena + '|' + q.tipo + '|' + (q.tipo === 'cifra' ? q.texto : q.texto.replace(/\d+([.,]\d+)?/g, '#')); if (!groups.has(k)) groups.set(k, {...q, desde: q.t, hasta: q.t, n: 0}); const g = groups.get(k); g.desde = Math.min(g.desde, q.t); g.hasta = Math.max(g.hasta, q.t); g.n++; g.grave = g.grave || q.grave; }
   const list = [...groups.values()].sort((a, b) => a.desde - b.desde);
   // Un choque o un problema de cámara de un solo instante suelto es grave igual; un aviso suelto de texto en una transición, no.
   // Lo de un solo instante en los textos suele ser una transición (dos rótulos que se cruzan): no cuenta.
@@ -351,6 +404,19 @@ const COMMANDS = {
   async voz([name, ...rest]) {
     const args = opts(rest);
     await voice(project(name), args);
+  },
+  async afinar([name]) {
+    const p = project(name);
+    if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Falta voz.mp3 («genframe voz»).');
+    await tune(p);
+  },
+  async revisar([name]) {
+    const p = project(name);
+    const mp4 = path.join(p.dir, path.basename(p.dir) + '.mp4');
+    if (!fs.existsSync(mp4)) die('Falta ' + mp4 + ' («genframe render»).');
+    const rev = await checkMp4(mp4);
+    for (const x of rev.out) console.log('⚠ ' + x);
+    console.log(rev.out.length ? `${rev.out.length} avisos en ${rev.frames} fotogramas` : `✔ ${rev.frames} fotogramas sin destellos, negros ni congelados`);
   },
   async frases([name]) {
     const p = project(name);
@@ -493,7 +559,9 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     const total = duration(p);
     if (args.tramos === '0' || (!args.tramos && total < 90)) await run(HF, ['render', '--output', mp4, out], {cwd: out, maxBuffer: 1 << 28});
     else await renderTramos(p, mp4, {forzar: !!args.rehacer, len: Number(args.tramos) || 45});
-    console.log(`✔ ${mp4} · ${duration(p)} s de vídeo en ${((Date.now() - started) / 1000).toFixed(0)} s`);
+    const rev = await checkMp4(mp4);
+    for (const x of rev.out) console.log('⚠ MP4: ' + x);
+    console.log(`✔ ${mp4} · ${duration(p)} s de vídeo en ${((Date.now() - started) / 1000).toFixed(0)} s` + (rev.out.length ? ` · ${rev.out.length} avisos del MP4` : ' · MP4 revisado sin destellos, negros ni congelados'));
   },
 };
 
@@ -548,6 +616,8 @@ if (!COMMANDS[cmd]) {
   nuevo <nombre> [16:9|9:16]   crea proyectos/<nombre>
   voces                        lista las voces de ElevenLabs
   voz <nombre> [--voz=ID] [--modelo=eleven_multilingual_v2]   locuta guion.txt → voz.mp3 + palabras.json
+  afinar <nombre>              ajusta a la voz real los bordes de las palabras junto a las pausas (lo hace «voz»)
+  revisar <nombre>             revisa el MP4 final: destellos de un fotograma, negros y congelados (lo hace «render»)
   frases <nombre>              frases numeradas con su tramo (para repartir escenas)
   palabras <nombre> [desde] [hasta]   palabras con su instante
   mesa <nombre> <pieza>        fotos de una pieza en la mesa de giro
