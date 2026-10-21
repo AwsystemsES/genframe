@@ -40,6 +40,18 @@ export function captionChunks(words, max = 52) {
   return chunks;
 }
 
+/** Palabra clave de un subtítulo de cine: la que lleva una cifra o, si no, la más larga que no sea de relleno. */
+const FILLER = new Set(['about', 'because', 'between', 'through', 'without', 'something', 'actually', 'probably', 'porque', 'entonces', 'también', 'todavía', 'durante', 'mientras', 'aunque', 'cuando', 'nuestro', 'nuestra']);
+export function pivot(chunk) {
+  if (chunk.length < 4) return -1;
+  const bare = (w) => w.t.replace(/[^\p{L}\p{N}$%]/gu, '');
+  const num = chunk.findIndex((w) => /\d/.test(w.t));
+  if (num >= 0) return num;
+  let best = -1, len = 6;
+  chunk.forEach((w, k) => { const b = bare(w); if (b.length > len && !FILLER.has(b.toLowerCase())) { best = k; len = b.length; } });
+  return best;
+}
+
 function fontFaces(art, out, extra = []) {
   const css = [];
   const used = new Set([...Object.values(art.fonts || {}), ...extra]);
@@ -118,6 +130,10 @@ function captionCss(art) {
     cinta: `.cap .box{background:${c.background || 'rgba(250,244,230,.92)'};padding:10px 26px 12px;transform:rotate(-.5deg);box-shadow:0 6px 16px rgba(0,0,0,.18)}`,
     ninguno: '.cap{display:none!important}',
     sombra_color: `.cap .box{font:700 44px/1.25 '${f.body}';color:#fff;text-shadow:0 2px 2px rgba(0,0,0,.55),0 0 18px rgba(0,0,0,.5)}.w .hl{display:none}`,
+    // Cine: sin caja; la frase entera a media luz y cada palabra se enciende al sonar. La palabra clave de cada
+    // subtítulo (una cifra o la palabra más larga) va mayor y en el color de resalte. mezcla:'exclusion' invierte el
+    // texto contra la imagen (se lee sobre fondos claros y oscuros; en grises medios, mejor sin mezcla).
+    cine: `.cap .box{font:500 42px/1.3 '${f.body}';letter-spacing:.01em;color:${c.text || '#fff'};text-shadow:0 1px 2px rgba(0,0,0,.75),0 0 22px rgba(0,0,0,.55)}.cap .w{opacity:.62}.cap .w.piv{font-weight:800;font-size:1.22em;color:${c.highlight || p.accent};vertical-align:-.04em}.w .hl{display:none}${c.mezcla === 'exclusion' ? '.cap{mix-blend-mode:exclusion}.cap .box{text-shadow:none;color:#fff}.cap .w.piv{color:#fff}' : ''}`,
     contorno: `.cap .box{font:400 46px/1.25 '${f.body}';color:#fff;text-shadow:0 0 2px #000,3px 3px 0 #000,-3px 3px 0 #000,3px -3px 0 #000,-3px -3px 0 #000,0 3px 0 #000,3px 0 0 #000,-3px 0 0 #000,0 -3px 0 #000}.w .hl{display:none}`,
   }[c.style || 'tira'];
   return base + '\n' + style + (art.overlayCaptions ? '\n.cap .box{max-width:1180px}' : '') + (art.vertical ? '\n.cap{bottom:560px}.cap .box{max-width:900px;font-size:54px!important;line-height:1.2}' : '');
@@ -220,7 +236,8 @@ ${transition(s)}`).join('\n');
     const a = chunk[0].a, b = chunk[chunk.length - 1].b;
     if (!inTr(a, b)) continue;
     const [ca, cd] = clipT(a, b);
-    caps.push(`<div class="clip cap" data-start="${ca.toFixed(3)}" data-duration="${cd.toFixed(3)}"><span class="box">${chunk.map((w, k) => `<span class="w" id="c${cid}w${k}">${esc(w.t)}</span>`).join(' ')}</span></div>`);
+    const piv = (art.captions || {}).style === 'cine' ? pivot(chunk) : -1;
+    caps.push(`<div class="clip cap" data-start="${ca.toFixed(3)}" data-duration="${cd.toFixed(3)}"><span class="box">${chunk.map((w, k) => `<span class="w${k === piv ? ' piv' : ''}" id="c${cid}w${k}">${esc(w.t)}</span>`).join(' ')}</span></div>`);
     chunk.forEach((w, k) => marks.push([`c${cid}w${k}`, w.a, w.b]));
   }
   const html = `<!doctype html>
@@ -254,6 +271,9 @@ try { new Function('root', 'T0', 'T1', ${JSON.stringify(job.overlay)})(document.
 ${JSON.stringify(marks)}.forEach(([id, a, b]) => {
   const span = document.getElementById(id);
   if (!span) return;
+  ${(art.captions || {}).style === 'cine' ? `K.tl.add(span, {opacity: [0.62, 1], duration: 110, ease: 'outQuad'}, K.ms(a));
+  if (span.classList.contains('piv')) K.tl.add(span, {scale: [1, 1.08, 1], duration: 380, ease: 'outQuad'}, K.ms(a));
+  return;` : ''}
   ${['contorno', 'sombra_color'].includes((art.captions || {}).style) ? `K.tl.add(span, {color: ['#ffffff', '${(art.captions || {}).highlight || '#f2c14e'}'], duration: 80}, K.ms(a));
   K.tl.add(span, {color: ['${(art.captions || {}).highlight || '#f2c14e'}', '#ffffff'], duration: 80}, K.ms(b - 0.03));
   return;` : ''}

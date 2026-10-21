@@ -163,11 +163,18 @@ const m = K.map.world(root, {x: 100, y: 80, w: 1720, h: 760, projection: 'equalE
 m.countries.es   // path SVG del país (anímalo: K.anim(m.countries.es, t, {fill: ['#ddd', K.palette.accent]}))
 m.centroid('es') // [x, y] dentro del svg del mapa
 m.project([lon, lat]); m.name('es') // nombre en español
+// Mesa inclinada: el mapa tumbado en perspectiva, con el fondo perdiéndose en bruma (el estilo de los documentales).
+const t = K.map.world(root, {focus: [[-125, 25], [-66, 50]], inclinar: 52, giro: 0, perspectiva: 1700, bruma: 0.35, fill, stroke});
+const capa = t.capa();   // svg tumbado con el mapa, en coordenadas del lienzo (m.project + m.box): rutas, zonas, puntos
+t.screen([lon, lat]);    // dónde cae ese punto en pantalla (para poner encima algo de pie)
+K.map.labels(t, [...]);  // en un mapa inclinado los rótulos van de pie, sobre su punto
 const e = K.map.spain(root, {x, y, w: 900, h: 760, level: 'ccaa'|'provinces'});
 e.regions['Andalucía']; e.centroids['Madrid, Comunidad de']; e.names; e.project([lon, lat])
 ```
 
 El mapa se gira solo hacia lo que pones en `focus`. Para un globo (`'orthographic'`) que mire a un sitio usa `center: [lon, lat]` con las coordenadas REALES del sitio (Rusia `[100, 60]`, Brasil `[-52, -10]`); nunca `rotate`. Un estrecho o una frontera de pocos km se encuadra con una caja de 2–6 grados alrededor (`focus: [[lonO, latS], [lonE, latN]]`), no con los países enteros, y los dos extremos se marcan con `m.project([lon, lat])`. Un país con territorios lejanos (Francia con la Guayana) se encuadra con una caja de la zona que se nombra.
+
+`inclinar` va de 0 a 65 grados (35-55 es lo natural). Úsalo para planos de situación y rutas largas, no para leer fronteras pequeñas: lo lejano se encoge.
 
 Los mapas de España son datos del IGN: si usas `K.map.spain`, añade en una esquina `© IGN` en 20 px.
 
