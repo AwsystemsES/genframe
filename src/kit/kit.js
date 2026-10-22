@@ -194,8 +194,8 @@
        * center [lon, lat]: punto que queda en medio (el globo 'orthographic' mira ahí; los planos giran solo en longitud,
        * útil en el Pacífico). Sin center, se gira hacia lo que se encuadra. rotate es el giro crudo de d3 ([-lon, -lat]).
        * inclinar (grados, 0-65): el mapa se tumba como sobre una mesa vista en perspectiva, con el fondo perdiéndose en
-       * bruma; giro (grados) lo gira sobre la mesa. Lo que se dibuje en m.svg o en m.capa() va tumbado con el mapa; m.screen
-       * da la posición en pantalla de un [lon, lat] y K.map.labels pone los rótulos de pie, encima, en su sitio.
+       * bruma; giro (grados) lo gira sobre la mesa. m.screen da la posición en pantalla de un [lon, lat], m.linea el trazado
+       * de una ruta, y K.map.labels pone los rótulos de pie, encima, en su sitio.
        */
       world(parent, {x = 0, y = 0, w = K.W, h = K.H, projection = 'equalEarth', focus = null, center = null, rotate = null, fill = 'rgba(0,0,0,.06)', stroke = K.palette.ink || '#222', strokeWidth = 1, bleed = 'auto', fade = 'auto', inclinar = 0, giro = 0, perspectiva = 1700, bruma = 0.35} = {}) {
         const topo = (D.geo || {}).world;
@@ -229,21 +229,24 @@
         // A sangre: un mapa grande (fondo) sigue dibujándose fuera de su caja hasta el borde del lienzo, sin cortes rectos.
         // Las coordenadas siguen siendo las de la caja (project, centroid y lo que se dibuje en svg). Uno pequeño se funde en sus bordes.
         const toBleed = bleed === 'auto' ? w >= K.W * 0.6 : !!bleed;
-        // Mesa inclinada: una capa del tamaño del lienzo, tumbada alrededor del centro del mapa.
-        const tilt = K.clamp(inclinar, 0, 65), ocx = x + w / 2, ocy = y + h / 2;
-        // Tumbado, el borde cercano se agranda y el lejano se ve: la mesa (y lo que lleva) se extiende M más allá del lienzo.
-        let mesa = null;
-        const M = tilt || giro ? Math.round(K.W * 0.45) : 0;
-        if (tilt || giro) {
-          const host = parent;
-          mesa = K.el(host, 'div', {style: {position: 'absolute', left: -M + 'px', top: -M + 'px', width: K.W + 2 * M + 'px', height: K.H + 2 * M + 'px', transformOrigin: `${ocx + M}px ${ocy + M}px`, transform: `perspective(${perspectiva}px) rotateX(${tilt}deg) rotateZ(${giro}deg)`}});
-          // Lo lejano se pierde en bruma en vez de acabar en un borde recto.
-          if (bruma > 0) { const top = (q) => Math.round(((M + K.H * q) / (K.H + 2 * M)) * 100), m = `linear-gradient(180deg, transparent ${top(0)}%, rgba(0,0,0,${(1 - bruma).toFixed(2)}) ${top(0.12 + tilt / 300)}%, #000 ${top(0.34 + tilt / 300)}%)`; mesa.style.webkitMaskImage = mesa.style.maskImage = m; }
-          parent = mesa;
-        }
-        const svg = toBleed ? K.svg(parent, 0, 0, K.W + 2 * M, K.H + 2 * M, {viewBox: `${-x - M} ${-y - M} ${K.W + 2 * M} ${K.H + 2 * M}`, overflow: 'hidden'}) : K.svg(parent, x + M, y + M, w, h, {overflow: 'hidden'});
-        if (!toBleed && (fade === 'auto' || fade)) { const m = 'linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent), linear-gradient(180deg, transparent, #000 6%, #000 94%, transparent)'; svg.style.webkitMaskImage = svg.style.maskImage = m; svg.style.webkitMaskComposite = 'source-in'; svg.style.maskComposite = 'intersect'; }
-        const path = d3.geoPath(proj);
+        // Mesa inclinada: la perspectiva se aplica a la propia geometría (cada punto del mapa pasa a su sitio en pantalla), no
+        // con una transformación 3D de CSS, que el render de HyperFrames no dibuja de forma fiable.
+        const tilt = K.clamp(inclinar, 0, 65), ocx = x + w / 2, ocy = y + h / 2, tilted = !!(tilt || giro);
+        const a = (tilt * Math.PI) / 180, gz = (giro * Math.PI) / 180;
+        const toScreen = (X, Y) => {
+          if (!tilted) return [X, Y];
+          let px = X - ocx, py = Y - ocy;
+          [px, py] = [px * Math.cos(gz) - py * Math.sin(gz), px * Math.sin(gz) + py * Math.cos(gz)];
+          const y2 = py * Math.cos(a), z2 = Math.min(py * Math.sin(a), perspectiva * 0.85), k = perspectiva / (perspectiva - z2);
+          return [ocx + px * k, ocy + y2 * k];
+        };
+        const svg = tilted ? K.svg(parent, 0, 0, K.W, K.H, {overflow: 'hidden'})
+          : toBleed ? K.svg(parent, 0, 0, K.W, K.H, {viewBox: `${-x} ${-y} ${K.W} ${K.H}`, overflow: 'hidden'}) : K.svg(parent, x, y, w, h, {overflow: 'hidden'});
+        // Lo lejano se pierde en bruma en vez de acabar en un borde recto.
+        if (tilted && bruma > 0) { const m = `linear-gradient(180deg, transparent 0%, rgba(0,0,0,${(1 - bruma).toFixed(2)}) ${Math.round(12 + tilt / 3)}%, #000 ${Math.round(30 + tilt / 3)}%)`; svg.style.webkitMaskImage = svg.style.maskImage = m; }
+        if (!tilted && !toBleed && (fade === 'auto' || fade)) { const m = 'linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent), linear-gradient(180deg, transparent, #000 6%, #000 94%, transparent)'; svg.style.webkitMaskImage = svg.style.maskImage = m; svg.style.webkitMaskComposite = 'source-in'; svg.style.maskComposite = 'intersect'; }
+        const lean = d3.geoTransform({point(px, py) { const [X, Y] = toScreen(px + x, py + y); this.stream.point(X, Y); }});
+        const path = tilted ? d3.geoPath({stream: (st) => proj.stream(lean.stream(st))}) : d3.geoPath(proj);
         const countries = {};
         for (const f of fc.features) {
           const d = path(f);
@@ -252,18 +255,12 @@
           const code = iso[f.id];
           if (code) countries[code] = p;
         }
-        // Pantalla de un punto de la mesa (coordenadas del lienzo): la misma cuenta que hace el navegador con la perspectiva.
-        const a = (tilt * Math.PI) / 180, gz = (giro * Math.PI) / 180;
-        const toScreen = (X, Y) => {
-          if (!mesa) return [X, Y];
-          let px = X - ocx, py = Y - ocy;
-          [px, py] = [px * Math.cos(gz) - py * Math.sin(gz), px * Math.sin(gz) + py * Math.cos(gz)];
-          const y2 = py * Math.cos(a), z2 = py * Math.sin(a), k = perspectiva / (perspectiva - z2);
-          return [ocx + px * k, ocy + y2 * k];
-        };
-        // m.capa(): un svg tumbado con el mapa, en coordenadas del lienzo (como m.project + box), para rutas, zonas y puntos.
-        return {svg, mesa, countries, box: {x, y, w, h}, inclinado: !!mesa, capa: () => K.svg(mesa || parent, M, M, K.W, K.H), project: (lonlat) => proj(lonlat),
-          screen: (lonlat) => { const q = proj(lonlat); return q ? toScreen(q[0] + x, q[1] + y) : null; }, centroid: (code) => { const f = fc.features.find((g) => iso[g.id] === code); return f ? path.centroid(f) : null; }, name: (code) => (D.countries[String(code).toUpperCase()] || {}).es};
+        // Inclinado, todo va en coordenadas de pantalla: m.screen([lon, lat]) para puntos y m.linea([[lon, lat], …]) para rutas
+        // (dibújalas en m.svg o en m.capa()); centroid también da la pantalla.
+        const screen = (lonlat) => { const q = proj(lonlat); return q ? toScreen(q[0] + x, q[1] + y) : null; };
+        return {svg, countries, box: {x, y, w, h}, inclinado: tilted, capa: () => K.svg(parent, 0, 0, K.W, K.H), project: (lonlat) => proj(lonlat), screen,
+          linea: (lls) => 'M' + lls.map((q) => screen(q).map((v) => v.toFixed(1)).join(',')).join(' L'),
+          centroid: (code) => { const f = fc.features.find((g) => iso[g.id] === code); return f ? path.centroid(f) : null; }, name: (code) => (D.countries[String(code).toUpperCase()] || {}).es};
       },
       /** España por comunidades autónomas o provincias (IGN), con Canarias en un recuadro. */
       spain(parent, {x = 0, y = 0, w = 900, h = 760, level = 'ccaa', fill = 'rgba(255,255,255,.6)', stroke = K.palette.ink || '#222', strokeWidth = 1.4} = {}) {
@@ -351,7 +348,7 @@
    */
   K.map.labels = function (m, items, {parent = null, size = K.vertical ? 46 : 40, color = K.palette.accent || '#e5ad58', t = null, stagger = 0.25, dot = true, font = 'title'} = {}) {
     // En un mapa inclinado los rótulos van de pie, fuera de la mesa, sobre la posición en pantalla de cada punto.
-    const host = parent || (m.mesa ? m.mesa.parentNode : m.svg.parentNode);
+    const host = parent || m.svg.parentNode;
     const ox = m.box ? m.box.x : 0, oy = m.box ? m.box.y : 0;
     const sv = K.svg(host, 0, 0, K.W, K.H);
     const pts = items.map((it) => { if (m.inclinado) return m.screen(it.ll); const [px, py] = m.project(it.ll); return [px + ox, py + oy]; });

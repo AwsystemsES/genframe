@@ -171,8 +171,9 @@ m.centroid('es') // [x, y] dentro del svg del mapa
 m.project([lon, lat]); m.name('es') // nombre en español
 // Mesa inclinada: el mapa tumbado en perspectiva, con el fondo perdiéndose en bruma (el estilo de los documentales).
 const t = K.map.world(root, {focus: [[-125, 25], [-66, 50]], inclinar: 52, giro: 0, perspectiva: 1700, bruma: 0.35, fill, stroke});
-const capa = t.capa();   // svg tumbado con el mapa, en coordenadas del lienzo (m.project + m.box): rutas, zonas, puntos
-t.screen([lon, lat]);    // dónde cae ese punto en pantalla (para poner encima algo de pie)
+const capa = t.capa();   // svg del lienzo encima del mapa, para rutas y puntos
+K.shape(capa, 'path', {d: t.linea([[lon, lat], …])}, {fill: 'none', stroke, strokeWidth});  // ruta ya en perspectiva
+t.screen([lon, lat]);    // dónde cae ese punto en pantalla; en un mapa inclinado, centroid también da la pantalla
 K.map.labels(t, [...]);  // en un mapa inclinado los rótulos van de pie, sobre su punto
 const e = K.map.spain(root, {x, y, w: 900, h: 760, level: 'ccaa'|'provinces'});
 e.regions['Andalucía']; e.centroids['Madrid, Comunidad de']; e.names; e.project([lon, lat])
