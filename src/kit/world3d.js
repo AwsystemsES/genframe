@@ -344,6 +344,9 @@
           if (halacion > 0.0) { vec3 acc = vec3(0.0); for (int i = 0; i < 12; i++) { float a = float(i) * 0.5236; vec2 o = vec2(cos(a), sin(a)) * (4.0 + mod(float(i), 3.0) * 4.0) / res * (res.x / 1920.0); vec3 sm = texture2D(tDiffuse, uv + o).rgb; float l = dot(sm, vec3(0.2126, 0.7152, 0.0722)); acc += sm * smoothstep(0.72, 1.0, l); } x += acc / 12.0 * vec3(1.0, 0.42, 0.22) * halacion; }
           x = (x - 0.5) * contraste + 0.5;
           // Curva fílmica: pie y hombro suaves (sombras que no se empastan, luces que no se queman).
+          // Antes, acotar: tras el resplandor una luz pasa de 1 y el polinomio se vuelve negativo por encima de 1,5 (mancha
+          // negra con halo azul en el sol reflejado en el agua).
+          x = clamp(x, 0.0, 1.0);
           x = mix(x, x * x * (3.0 - 2.0 * x), curva);
           float l = dot(x, vec3(0.2126, 0.7152, 0.0722)); x = mix(vec3(l), x, saturacion);
           x = mix(x, vec3(l) * vec3(1.07, 0.98, 0.82), sepia);
@@ -572,7 +575,7 @@
   /** Mundos 3D creados en este vídeo (para el auditor). */
   K._worlds = [];
 
-  K.world3d = function (root, T0, T1, {bruma = null, manchas = true, foco = null, niebla = null, pelicula = null, ground = 'iberia', sky = null, land = null, sea = null, highlight = {}, tilt = true, look = K.data.look || 'comic', regions = false, glow = null, haze = null, ocean = null, terrain = null, clouds = null, exposure = 1.15, rim = 1} = {}) {
+  K.world3d = function (root, T0, T1, {bruma = null, manchas = 'auto', foco = null, niebla = null, pelicula = null, ground = 'iberia', sky = null, land = null, sea = null, highlight = {}, tilt = true, look = K.data.look || 'comic', regions = false, glow = null, haze = null, ocean = null, terrain = null, clouds = null, exposure = 1.15, rim = 1} = {}) {
     LOOK = look;
     const S = skyOf(sky);
     const wrap = K.box(root, 0, 0, {w: K.W, h: K.H, style: {background: `linear-gradient(180deg, ${S.top} 0%, ${S.mid} 45%, ${S.low} 70%, ${S.fog} 100%)`, overflow: 'hidden'}});
@@ -657,7 +660,8 @@
     const HL = 3;
     const seaMesh = new T.Mesh(new T.PlaneGeometry(9000, 9000), new T.MeshStandardMaterial({color: new T.Color(ground === 'none' ? (land || S.land) : (sea || S.sea)), roughness: ground === 'none' ? 0.92 : 0.32, metalness: 0}));
     seaMesh.rotation.x = -Math.PI / 2; seaMesh.receiveShadow = true;
-    if (ground === 'none' && !ocean && manchas) { const mt = macroTexture().clone(); mt.needsUpdate = true; mt.repeat.set(5, 5); mt.rotation = 0.6; seaMesh.material.map = mt; seaMesh.material.needsUpdate = true; }
+    // Manchas de luz en el suelo liso: solo en exteriores (cielo con bruma); en un estudio de fondo liso parecerían suciedad.
+    if (ground === 'none' && !ocean && (manchas === true || (manchas === 'auto' && (S.haze ?? 1) > 0))) { const mt = macroTexture().clone(); mt.needsUpdate = true; mt.repeat.set(5, 5); mt.rotation = 0.6; seaMesh.material.map = mt; seaMesh.material.needsUpdate = true; }
     scene.add(seaMesh);
 
     /* ---- generadores de escenario: mar con olas, terreno con costa y nubes ---- */
