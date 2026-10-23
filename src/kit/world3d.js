@@ -941,7 +941,7 @@
         obj.position.add(d); moved += d.length();
         if (obj.userData.grounded) obj.position.y = ground === 'none' ? (terrainHeight ? terrainHeight(obj.position.x, obj.position.z) : 0) : HL;
       }
-      if (moved > 0) console.warn(`genframe: «${obj.userData.model}» nacía atravesando otra pieza; se ha apartado ${moved.toFixed(1)} unidades${hit ? ' (sigue tocando «' + hit.o.userData.model + '»: revisa la colocación)' : ''}.`);
+      if (moved > 0) console.warn(`TurboFrame: «${obj.userData.model}» nacía atravesando otra pieza; se ha apartado ${moved.toFixed(1)} unidades${hit ? ' (sigue tocando «' + hit.o.userData.model + '»: revisa la colocación)' : ''}.`);
     };
     /** Lleva articulaciones con nombre a unos ángulos (grados, {x, y, z}) entre t y t+dur. */
     W.pose = (obj, t, angles, dur = 0.5, ease = 'inOutSine') => {
@@ -1372,7 +1372,7 @@
         placed.push([x, z]);
       }
       placed.forEach(([x, z], i) => list.push(W.add(name, {x, z}, {...params, ...(per ? per(i) : {}), rotate: giro === 'azar' ? r() * 360 : giro})));
-      if (placed.length < n) console.warn(`genframe: w.scatter solo cabe ${placed.length} de ${n} «${name}» en esa zona sin que se toquen.`);
+      if (placed.length < n) console.warn(`TurboFrame: w.scatter solo cabe ${placed.length} de ${n} «${name}» en esa zona sin que se toquen.`);
       return list;
     };
     /** Punto 3D de un destino: pieza, {x, y, z} o [lon, lat]. */
@@ -2110,7 +2110,7 @@
     /**
      * Auditoría física del fotograma t (después de dibujarlo): piezas que se atraviesan, cámara dentro del agua, del
      * terreno o de una pieza, sujeto tapado por una ola, piezas enterradas, flotando o hundidas, y pies que patinan.
-     * Devuelve [{tipo, grave, texto}]. La usa «genframe auditar».
+     * Devuelve [{tipo, grave, texto}]. La usa «turboframe auditar».
      */
     W.audit = (t) => {
       const out = [];

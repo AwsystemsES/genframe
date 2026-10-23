@@ -1,8 +1,8 @@
-# Licencia de uso de genframe
+# Licencia de uso de TurboFrame
 
 > Borrador. Revísalo con un abogado antes de vender.
 
-**genframe** («el Software») es propiedad de su autor («el Titular»). Comprar una licencia o mantener una suscripción activa te da los derechos siguientes, y solo esos.
+**TurboFrame** («el Software») es propiedad de su autor («el Titular»). Comprar una licencia o mantener una suscripción activa te da los derechos siguientes, y solo esos.
 
 ## Lo que puedes hacer
 

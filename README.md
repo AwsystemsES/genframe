@@ -1,8 +1,8 @@
-# genframe
+# TurboFrame
 
-**genframe** es un estudio de vídeos explicativos generados por código: shorts y documentales animados en 2D y 3D sin fotos ni material de archivo. Todo (personas, barcos, edificios, mapas reales, gráficos, cámaras, efectos) se programa para cada vídeo.
+**TurboFrame** es un estudio de vídeos explicativos generados por código: shorts y documentales animados en 2D y 3D sin fotos ni material de archivo. Todo (personas, barcos, edificios, mapas reales, gráficos, cámaras, efectos) se programa para cada vídeo.
 
-- **Una IA (Claude Code con la skill `genframe`)** hace de directora, guionista visual, modeladora, programadora de escenas y jueza de calidad.
+- **Una IA (Claude Code con la skill `turboframe`)** hace de directora, guionista visual, modeladora, programadora de escenas y jueza de calidad.
 - **Esta herramienta** pone la voz con **ElevenLabs**, monta el vídeo con **HyperFrames**, hace fotos para revisar, audita los fallos, mezcla el audio y renderiza el MP4.
 
 ---
@@ -21,7 +21,7 @@ Necesitas tres cosas. Tu IA hace el resto.
 Después abre Claude Code en la carpeta donde quieras el proyecto (por ejemplo, Documentos) y **pega este mensaje**:
 
 ```text
-Quiero instalar el motor de vídeos genframe. Lee y sigue al pie de la letra la sección «Instrucciones para la IA» del README de https://github.com/AwsystemsES/genframe (repositorio privado: usa mi acceso de GitHub; si no puedes clonarlo, dime exactamente qué tengo que hacer). Instala todo lo que falte en mi ordenador explicándome cada paso en lenguaje sencillo, nunca me pidas las claves en el chat (dime en qué fichero ponerlas yo) y no des la instalación por terminada hasta que la comprobación del paso 6 diga «todo listo».
+Quiero instalar el motor de vídeos TurboFrame. Lee y sigue al pie de la letra la sección «Instrucciones para la IA» del README de https://github.com/AwsystemsES/genframe (repositorio privado: usa mi acceso de GitHub; si no puedes clonarlo, dime exactamente qué tengo que hacer). Instala todo lo que falte en mi ordenador explicándome cada paso en lenguaje sencillo, nunca me pidas las claves en el chat (dime en qué fichero ponerlas yo) y no des la instalación por terminada hasta que la comprobación del paso 6 diga «todo listo».
 ```
 
 Cuando termine, pídele tu primer vídeo; por ejemplo: «hazme un short vertical de 1 minuto sobre el crack del 29». Antes de gastar en ElevenLabs te dirá cuánto cuesta y te pedirá permiso.
@@ -38,7 +38,7 @@ Sigue estos pasos en orden. Explica cada uno al usuario en lenguaje sencillo, en
 |---|---|---|
 | **Git** | `git --version` | macOS: `xcode-select --install`. Linux: `sudo apt install git` (o el gestor de su distribución). Windows: instala Git for Windows. |
 | **Node.js 20 o superior** | `node --version` | Instala la versión LTS desde nodejs.org, o con un gestor (`brew install node`, `nvm install --lts`, `winget install OpenJS.NodeJS.LTS`). Si hay una versión vieja, actualízala. |
-| **Python 3 con numpy** | `python3 -c "import numpy; print(numpy.__version__)"` | `python3 -m pip install --user numpy`. Si el Python del sistema no deja instalar paquetes, crea un entorno virtual (`python3 -m venv ~/.genframe-py && ~/.genframe-py/bin/pip install numpy`) y pon `PYTHON=~/.genframe-py/bin/python` en el `.env` (paso 4). |
+| **Python 3 con numpy** | `python3 -c "import numpy; print(numpy.__version__)"` | `python3 -m pip install --user numpy`. Si el Python del sistema no deja instalar paquetes, crea un entorno virtual (`python3 -m venv ~/.turboframe-py && ~/.turboframe-py/bin/pip install numpy`) y pon `PYTHON=~/.turboframe-py/bin/python` en el `.env` (paso 4). |
 | **Espacio en disco** | — | Unos **2 GB libres**: repositorio unos 600 MB, dependencias unos 700 MB, Chrome de render unos 200 MB, más los vídeos. |
 
 No hace falta instalar ffmpeg, Three.js ni Chrome: los trae el paso 3.
@@ -46,8 +46,8 @@ No hace falta instalar ffmpeg, Three.js ni Chrome: los trae el paso 3.
 ### 2. Clona el repositorio
 
 ```bash
-git clone https://github.com/AwsystemsES/genframe.git
-cd genframe
+git clone https://github.com/AwsystemsES/genframe.git turboframe
+cd turboframe
 ```
 
 Es privado. Si pide usuario y contraseña o da error 403/404:
@@ -87,12 +87,12 @@ El `.env` nunca se sube al repositorio (está en `.gitignore`).
 npm run instalar-skill
 ```
 
-Enlaza `.claude/skills/genframe` en `~/.claude/skills/genframe`, de modo que la skill **genframe** (`/genframe`) esté disponible en cualquier sesión de Claude Code. En Windows, crear el enlace puede requerir activar el «Modo de desarrollador» o una terminal de administrador.
+Enlaza `.claude/skills/turboframe` en `~/.claude/skills/turboframe`, de modo que la skill **TurboFrame** (`/turboframe`) esté disponible en cualquier sesión de Claude Code. En Windows, crear el enlace puede requerir activar el «Modo de desarrollador» o una terminal de administrador.
 
 ### 6. Verifica que todo funciona
 
 ```bash
-node bin/genframe.mjs comprobar
+node bin/turboframe.mjs comprobar
 ```
 
 Revisa Node, las dependencias, el Chrome de render, ffmpeg, Python con numpy, las claves del `.env` (sin enseñarlas) y la skill, y monta un vídeo de prueba. Si termina con **«✔ todo listo»**, el motor está bien instalado; si no, dice qué falta. No gasta nada.
@@ -101,7 +101,7 @@ Para comprobar también la voz, que **cuesta unos céntimos**, pide permiso al u
 
 ### 7. Antes de hacer vídeos
 
-Lee entero `docs/BRIEFING.md` (estado, reglas e historia) y `.claude/skills/genframe/SKILL.md` (flujo de trabajo, comandos y rúbrica de calidad), y sigue sus reglas. Las más importantes:
+Lee entero `docs/BRIEFING.md` (estado, reglas e historia) y `.claude/skills/turboframe/SKILL.md` (flujo de trabajo, comandos y rúbrica de calidad), y sigue sus reglas. Las más importantes:
 - **Coste:** antes de gastar en ElevenLabs, di el coste y espera el sí.
 - **Calidad:** revisa cada pieza con `mesa` y cada escena con `fotos`, pasa `auditar`, y no entregues nada por debajo de 8 en la rúbrica sin decirlo.
 - **Contenido:** solo datos verificados; personas reales como personajes ficticios sin parecido; sin símbolos de odio, logotipos ni gore.
@@ -134,7 +134,7 @@ Los vídeos de `proyectos/` y el `.env` no se tocan al actualizar.
 
 ## Uso
 
-Con la skill instalada, pide el vídeo a Claude Code en lenguaje normal. La IA sigue el flujo de `.claude/skills/genframe/SKILL.md`:
+Con la skill instalada, pide el vídeo a Claude Code en lenguaje normal. La IA sigue el flujo de `.claude/skills/turboframe/SKILL.md`:
 1. guion con datos verificados y voz, tras confirmar el coste;
 2. dirección de arte (paleta, tipografías, cielos);
 3. reparto: cada pieza 3D se fabrica y se revisa en una «mesa» de fotos;
@@ -143,7 +143,7 @@ Con la skill instalada, pide el vídeo a Claude Code en lenguaje normal. La IA s
 6. música, efectos y mezcla a −14 LUFS;
 7. render del MP4, en `proyectos/<nombre>/<nombre>.mp4`.
 
-La herramienta también se usa a mano: `node bin/genframe.mjs` lista los comandos (`nuevo`, `voz`, `frases`, `palabras`, `mesa`, `fotos`, `validar`, `auditar`, `audio`, `render`).
+La herramienta también se usa a mano: `node bin/turboframe.mjs` lista los comandos (`nuevo`, `voz`, `frases`, `palabras`, `mesa`, `fotos`, `validar`, `auditar`, `audio`, `render`).
 
 **Cifras orientativas** (en un Mac):
 
@@ -158,8 +158,8 @@ La herramienta también se usa a mano: `node bin/genframe.mjs` lista los comando
 |---|---|
 | `README.md` | Este documento. |
 | `docs/BRIEFING.md` | Estado del proyecto, reglas del usuario e historia: lo primero que debe leer una IA. |
-| `.claude/skills/genframe/` | La skill (`SKILL.md`) y sus manuales: `referencia/kit.md` (escenas) y `referencia/taller.md` (piezas). |
-| `bin/genframe.mjs` | Herramienta de línea de comandos. |
+| `.claude/skills/turboframe/` | La skill (`SKILL.md`) y sus manuales: `referencia/kit.md` (escenas) y `referencia/taller.md` (piezas). |
+| `bin/turboframe.mjs` | Herramienta de línea de comandos. |
 | `bin/postinstall.mjs`, `bin/instalar-skill.mjs` | Lo que hacen `npm install` y `npm run instalar-skill`. |
 | `src/kit/kit.js` | Caja de herramientas 2D (`K`): sincronía con la voz, formas, iconos, banderas, mapas reales, títulos que se ajustan solos, rótulos sin solapes y animación. |
 | `src/kit/world3d.js` | Mundo 3D (`K.world3d`): mapa extruido, mar con olas, costa, nubes, luz, cámara segura, colisiones, rutas a pie, formaciones, efectos, decoración del entorno y auditoría física. |

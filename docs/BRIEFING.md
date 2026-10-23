@@ -1,13 +1,13 @@
-# Briefing de genframe
+# Briefing de TurboFrame
 
-Estado a 17-10-2026. Este documento sirve para seguir genframe en un chat nuevo, sin depender de la conversación ni del proyecto Autake. Léelo entero antes de tocar nada.
+Estado a 17-10-2026. Este documento sirve para seguir TurboFrame en un chat nuevo, sin depender de la conversación ni del proyecto Autake. Léelo entero antes de tocar nada.
 
 ## 1. Qué es y por qué existe
 
-**genframe** es un estudio local de vídeos explicativos generados por código: escenas 2D y 3D programadas a medida para cada vídeo, sin fotos, vídeos de archivo ni modelos descargados.
+**TurboFrame** es un estudio local de vídeos explicativos generados por código: escenas 2D y 3D programadas a medida para cada vídeo, sin fotos, vídeos de archivo ni modelos descargados.
 
-- **Claude**, mediante la skill `genframe`, hace todo el trabajo creativo y técnico: dirección de arte, guion visual, fabricación de piezas 3D/2D, programación de escenas y revisión mirando las imágenes.
-- **La herramienta `bin/genframe.mjs`** solo ejecuta:
+- **Claude**, mediante la skill `turboframe`, hace todo el trabajo creativo y técnico: dirección de arte, guion visual, fabricación de piezas 3D/2D, programación de escenas y revisión mirando las imágenes.
+- **La herramienta `bin/turboframe.mjs`** solo ejecuta:
   - pone la voz con ElevenLabs;
   - monta el proyecto HyperFrames;
   - hace fotos para revisar;
@@ -20,8 +20,8 @@ Nació dentro de la app Autake como tipo de vídeo «Vídeo explicativo», con u
 2. **Seguirlo aquí, con Claude dirigiendo**, porque los vídeos que Claude programó a mano con la caja de herramientas (un VOX estilo GTA San Andreas y un A350 marcha atrás) quedaron muy por encima de los automáticos.
 
 Repositorio y skill:
-- **Repositorio:** https://github.com/AwsystemsES/genframe (privado), en el Mac del usuario en `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe` (antes `~/genframe`).
-- **Skill:** `.claude/skills/genframe/SKILL.md`, enlazada en `~/.claude/skills/genframe` (`npm run instalar-skill`). Aparece como `/genframe`.
+- **Repositorio:** https://github.com/AwsystemsES/genframe (privado), en el Mac del usuario en `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe` (antes `~/turboframe`).
+- **Skill:** `.claude/skills/turboframe/SKILL.md`, enlazada en `~/.claude/skills/turboframe` (`npm run instalar-skill`). Aparece como `/turboframe`.
 
 ## 2. Reglas del usuario (obligatorias)
 
@@ -35,7 +35,7 @@ Repositorio y skill:
   - Personas reales solo como personajes ficticios inspirados, sin parecido facial.
   - Sin gore, sin esvásticas ni símbolos de odio, sin logotipos ni marcas reales.
 - **Datos:** solo los del guion o verificados; no inventar cifras.
-- **Separación:** genframe no tiene nada que ver con Autake. No tocar el repositorio de Autake para esto ni usar sus servidores, su flota ni sus claves.
+- **Separación:** TurboFrame no tiene nada que ver con Autake. No tocar el repositorio de Autake para esto ni usar sus servidores, su flota ni sus claves.
 - **Repositorio:** no subir `proyectos/` ni `.env` (ya están en `.gitignore`).
 - **Credenciales:** nunca pedir claves en el chat. El usuario las pone en el `.env`.
 
@@ -43,8 +43,8 @@ Repositorio y skill:
 
 En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe` (movida allí el 17-10 desde `~/genframe`; la skill se reenlazó con `npm run instalar-skill`).
 
-- **Node:** está en `~/.local/node/bin` y no en el PATH del sistema. Usa `PATH=~/.local/node/bin:$PATH node bin/genframe.mjs …`.
-- **ffmpeg y ffprobe:** vienen con `npm install` (paquetes `ffmpeg-static` 5.3.0 y `ffprobe-static` 3.1.0). La herramienta los pone delante en el PATH para que HyperFrames los encuentre. `FFMPEG`/`FFPROBE` en el `.env` solo hacen falta si se quieren otros. genframe ya no depende del laboratorio de Descargas: se probó renderizando con el laboratorio oculto y el 17-10 el laboratorio (`~/Downloads/explicativo-lab`) se movió a la Papelera; todo lo que valía está en este repositorio (`referencias/`, `assets/`, `docs/historia-laboratorio/`).
+- **Node:** está en `~/.local/node/bin` y no en el PATH del sistema. Usa `PATH=~/.local/node/bin:$PATH node bin/turboframe.mjs …`.
+- **ffmpeg y ffprobe:** vienen con `npm install` (paquetes `ffmpeg-static` 5.3.0 y `ffprobe-static` 3.1.0). La herramienta los pone delante en el PATH para que HyperFrames los encuentre. `FFMPEG`/`FFPROBE` en el `.env` solo hacen falta si se quieren otros. TurboFrame ya no depende del laboratorio de Descargas: se probó renderizando con el laboratorio oculto y el 17-10 el laboratorio (`~/Downloads/explicativo-lab`) se movió a la Papelera; todo lo que valía está en este repositorio (`referencias/`, `assets/`, `docs/historia-laboratorio/`).
 - **Python:** `python3` con numpy 2.0.2 (para `src/audio.py`).
 - **`.env`:** copia de `.env.example`, ya con `ELEVENLABS_API_KEY` y `ELEVENLABS_VOICE_ID`. La clave no tiene el permiso `voices_read`: `voces` da 401, pero `voz` funciona. Modelo elegido: `eleven_multilingual_v2` (0,08 $ por cada 1.000 caracteres).
 - **GitHub:**
@@ -57,7 +57,7 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 
 | Ruta | Qué es |
 |---|---|
-| `bin/genframe.mjs` | Herramienta de línea de comandos (ver §5). |
+| `bin/turboframe.mjs` | Herramienta de línea de comandos (ver §5). |
 | `bin/postinstall.mjs`, `bin/instalar-skill.mjs` | Tras `npm install`: empaqueta Three.js y prepara el navegador; enlaza la skill. |
 | `src/kit/kit.js` | Caja 2D global `K`: sincronía con la voz (`K.cue`), elementos (`K.box`, `K.svg`, `K.shape`, `K.rough`, `K.icon`, `K.flag`), animación sobre una línea de tiempo anime.js (`K.show`, `K.anim`, `K.draw`, `K.count`, `K.typeOn`, `K.camera`, `K.onFrame`), mapas reales (`K.map.world` con `center`/`focus`, `K.map.spain`), dibujos fabricados (`K.figure`), bocadillos y flechas. |
 | `src/kit/world3d.js` | Mundo 3D `K.world3d` (Three.js con un único WebGL compartido, ver §6). |
@@ -67,11 +67,11 @@ En el Mac del usuario ya está todo instalado en `/Applications/MAMP/htdocs/rsaa
 | `src/audio.py` | Música compuesta (VSCO 2 o síntesis), efectos Kenney, ambientes sintetizados, ducking de la voz y loudnorm a −14 LUFS. |
 | `src/catalog.mjs` | Lo único fijo: tipografías (39 de Fontsource), transiciones, estilos de subtítulo, efectos, ambientes y límites de la música. |
 | `assets/` | Muestras VSCO 2 CE (piano, arpa, cuerdas), efectos Kenney (CC0), `countries.json`, `LICENCIAS.md`. |
-| `.claude/skills/genframe/` | `SKILL.md` (flujo, comandos, rúbrica y reglas) y `referencia/kit.md` y `referencia/taller.md`: los manuales que antes leía la IA de OpenAI; las notas de la skill explican cómo adaptarlos. |
+| `.claude/skills/turboframe/` | `SKILL.md` (flujo, comandos, rúbrica y reglas) y `referencia/kit.md` y `referencia/taller.md`: los manuales que antes leía la IA de OpenAI; las notas de la skill explican cómo adaptarlos. |
 | `docs/encargos/` | Encargos pendientes (el short de Normandía). |
 | `proyectos/` | Un directorio por vídeo (no se sube). |
 
-## 5. La herramienta (`node bin/genframe.mjs <comando>`)
+## 5. La herramienta (`node bin/turboframe.mjs <comando>`)
 
 | Comando | Qué hace |
 |---|---|
@@ -216,7 +216,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    **Causa:** pedir a una IA que invente cuerpos, barcos, mar y luz en cada vídeo, con jueces que miraban miniaturas en baja resolución y sin ninguna barrera.
 
    **Respuesta:** los generadores de §6 y §7 y jueces más duros (alta resolución, medidas de brillo, de centro vacío y de planos repetidos, y replanteo desde cero). Luego se decidió que dirija Claude.
-6. **Coste orientativo** del motor automático: unos 6 $ de OpenAI por minuto con Sol. Con genframe no hay OpenAI: el coste es el uso de Claude más ElevenLabs (unos céntimos por short).
+6. **Coste orientativo** del motor automático: unos 6 $ de OpenAI por minuto con Sol. Con TurboFrame no hay OpenAI: el coste es el uso de Claude más ElevenLabs (unos céntimos por short).
 7. **Rentabilidad:** un Short tendría que pasar de unas 55.000-180.000 visitas para recuperar 5,4 $ (RPM de Shorts entre 0,03 y 0,10 $). Los vídeos largos se recuperan antes (RPM de 1 a 5 $).
 8. **Render:** en la flota sin GPU (CPX42, 8 vCPU), unas 3,5 veces la duración del vídeo con 3D. En el Mac con GPU, unas 0,7 veces: 6 s de prueba en 39 s, incluidos audio y montaje.
 
@@ -230,7 +230,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
 
 ## 11. Estado y próximos pasos
 
-1. **Lo que hay:** genframe montado, independiente (trae su propio ffmpeg), subido y probado de punta a punta, con la clave de ElevenLabs ya en el `.env`.
+1. **Lo que hay:** TurboFrame montado, independiente (trae su propio ffmpeg), subido y probado de punta a punta, con la clave de ElevenLabs ya en el `.env`.
 2. **Primer encargo, hecho (17-10):** el short vertical del Día D está en `proyectos/normandia/normandia.mp4`.
    - Duración y coste: 75,8 s; voz real de ElevenLabs por ≈ 0,07 $; render en 156 s en el Mac.
    - Trabajo: 10 piezas revisadas en la mesa y 14 escenas revisadas con sus fotos.
@@ -238,7 +238,7 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    - Cambios en la herramienta:
      - los cortes ya no se adelantan 0,55 s (`src/assemble.mjs`);
      - curva de volumen de la música atada a palabras: `musica.curva`;
-     - `build` acepta palabras (`bin/genframe.mjs` y `src/audio.py`).
+     - `build` acepta palabras (`bin/turboframe.mjs` y `src/audio.py`).
 3. **Motor de calidad, para todos los vídeos (17-10, tras auditar el short):**
    - **Física:** flotación con inercia; máscara de agua en cascos abiertos; mar de Gerstner con reflejo, espuma de flotación y estela; cámara que nunca entra en el agua ni queda tapada por una ola; separación automática de piezas que nacen solapadas; terreno seguido al moverse.
    - **Herramientas nuevas:** `w.walk` (A*, sin pies que patinan), `w.formation`, `w.scatter`, `w.point`, `w.look`, `w.shake`; efectos con profundidad, anclables a piezas, más `fogonazo` y `columna`.
@@ -261,7 +261,8 @@ No son modelos fijos: el usuario no quiere nada prefabricado. Son constructores 
    - **Cámara y atmósfera 3D (22-10):** `w.barrido`, `w.golpe`, `w.vertigo`, `w.mano` (y `fov` en las tomas); `w.nubes` (nubes de volumen atravesables) y humo y fuego como bocanadas iluminadas.
    - **Arreglos tras el antes/después (22-10):** la curva fílmica del etalonado se volvía negativa con luces por encima de 1,5 (el sol reflejado en el mar tras el resplandor salía como mancha negra con halo azul); ahora se acota antes. Las manchas de luz del suelo liso solo salen en exteriores (`manchas: 'auto'`, cielo con bruma): en un estudio de fondo liso ensuciaban el fondo. La mesa inclinada proyecta la geometría del mapa (la transformación 3D de CSS no salía en el render de HyperFrames).
    - **Comprobación (22-10):** antes/después en 21 instantes de ogallala, appalachians y diesel-deal (mismo aspecto, más perspectiva aérea; dos regresiones encontradas y corregidas) y un vídeo de laboratorio de 30 s con seis escenas parecidas hechas con lo nuevo (render en 145 s, sin graves).
-   - **Producto (23-10):** decidido vender genframe empaquetado para el Claude Code de cada cliente. Carpeta `producto/` (ver su README): empaquetador con limpieza de lo personal, README de cliente, licencia (borrador), avisos de terceros y novedades; comandos `comprobar`, `version` y `actualizar`. Versión 1.0.0. Probado instalando el paquete desde cero y simulando una actualización.
+   - **Nombre (23-10):** el producto pasa a llamarse **TurboFrame** (antes genframe; dominio turboframe.ai). Cambiado en código, comando (`bin/turboframe.mjs`), skill (`turboframe`) y documentación. Siguen con el nombre antiguo el repositorio de GitHub, el alias SSH y la carpeta del Mac.
+   - **Producto (23-10):** decidido vender TurboFrame empaquetado para el Claude Code de cada cliente. Carpeta `producto/` (ver su README): empaquetador con limpieza de lo personal, README de cliente, licencia (borrador), avisos de terceros y novedades; comandos `comprobar`, `version` y `actualizar`. Versión 1.0.0. Probado instalando el paquete desde cero y simulando una actualización.
    - **Limpieza (20-10):** a petición del usuario se retiraron el banco de pruebas (`pruebas/`, `npm test`), los vídeos de referencia, la historia del laboratorio y de Autake, y los recursos que el motor no usaba (HDRI, texturas, la Tierra de la NASA, Natural Earth en shapefiles). Siguen en el historial de git si alguna vez hacen falta.
 4. **Generadores pendientes:** aviones, edificios protagonistas, vegetación variada, animales y personajes 2D; decoraciones `'industrial'`, `'carretera'`, `'puerto'` y `'oficial'`.
 5. **Mejoras de la herramienta:**

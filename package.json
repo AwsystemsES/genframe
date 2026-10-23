@@ -1,5 +1,5 @@
 {
-  "name": "genframe",
+  "name": "turboframe",
   "private": true,
   "type": "module",
   "description": "Estudio de vídeos explicativos generados por código: Claude dirige, fabrica las piezas y programa las escenas; HyperFrames renderiza y ElevenLabs pone la voz.",
@@ -7,7 +7,7 @@
     "build": "esbuild src/kit/build/three-entry.js --bundle --minify --format=iife --outfile=dist/three.js",
     "postinstall": "node bin/postinstall.mjs",
     "instalar-skill": "node bin/instalar-skill.mjs",
-    "genframe": "node bin/genframe.mjs"
+    "turboframe": "node bin/turboframe.mjs"
   },
   "dependencies": {
     "@fontsource/abril-fatface": "5.3.0",
@@ -68,7 +68,7 @@
   },
   "version": "1.0.0",
   "bin": {
-    "genframe": "bin/genframe.mjs"
+    "turboframe": "bin/turboframe.mjs"
   },
   "engines": {
     "node": ">=20"

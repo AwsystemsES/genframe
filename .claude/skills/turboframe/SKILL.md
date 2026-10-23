@@ -1,9 +1,9 @@
 ---
-name: genframe
-description: Estudio de vídeos explicativos generados por código (2D y 3D, sin fotos ni material de archivo). Úsala cuando el usuario quiera crear, rehacer o mejorar un vídeo explicativo, un short, un documental animado o una pieza de motion graphics a partir de un guion o una idea, con voz de ElevenLabs. Claude hace de director, guionista visual, modelador, programador de escenas y juez; la herramienta genframe pone la voz, monta, fotografía, mezcla y renderiza.
+name: turboframe
+description: Estudio de vídeos explicativos generados por código (2D y 3D, sin fotos ni material de archivo). Úsala cuando el usuario quiera crear, rehacer o mejorar un vídeo explicativo, un short, un documental animado o una pieza de motion graphics a partir de un guion o una idea, con voz de ElevenLabs. Claude hace de director, guionista visual, modelador, programador de escenas y juez; la herramienta TurboFrame pone la voz, monta, fotografía, mezcla y renderiza.
 ---
 
-# genframe: estudio de vídeos explicativos
+# TurboFrame: estudio de vídeos explicativos
 
 Tú haces TODO el trabajo creativo y técnico. La herramienta solo ejecuta. Nada sale de plantillas: cada vídeo tiene su dirección, sus piezas y sus escenas, escritas por ti y revisadas por ti mirando las imágenes.
 
@@ -11,7 +11,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 
 ## Dónde está todo
 
-- Repositorio: la carpeta que contiene `bin/genframe.mjs` (en el Mac del usuario, `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe`). Ejecuta los comandos desde ahí: `node bin/genframe.mjs <comando>`.
+- Repositorio: la carpeta que contiene `bin/turboframe.mjs` (en el Mac del usuario, `/Applications/MAMP/htdocs/rsaas.io/rsaas.io/desarrollos/genframe`). Ejecuta los comandos desde ahí: `node bin/turboframe.mjs <comando>`.
 - Cada vídeo: `proyectos/<nombre>/`.
   - `guion.txt`: la locución; cada frase termina en `.`, `?`, `!` o `…`.
   - `plan.json`: formato, voz, dirección de arte, escenas y sonido.
@@ -88,7 +88,7 @@ Un 5-6 es «correcto pero pobre». Un 8 es «lo publicaría un canal grande». N
 
 ## Mejorar el motor (para todos los vídeos)
 
-Cada fallo que aparezca en un vídeo se arregla, si se puede, en el motor (`src/kit/*.js`, `bin/genframe.mjs`) y no en la escena:
+Cada fallo que aparezca en un vídeo se arregla, si se puede, en el motor (`src/kit/*.js`, `bin/turboframe.mjs`) y no en la escena:
 1. Arreglo en el motor, genérico, sin nada de un vídeo concreto.
 2. Una comprobación en `auditar` si se puede detectar sola.
 3. Comprobarlo con un proyecto mínimo de usar y tirar (fuera de `proyectos/` o borrándolo después): `validar`, `mesa`, `fotos` y `auditar` sin graves.

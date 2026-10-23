@@ -1,8 +1,8 @@
 {
-  "nombre": "genframe",
+  "nombre": "TurboFrame",
   "descripcion": "Estudio de vídeos explicativos en 2D y 3D generados por código, dirigido por Claude Code.",
   "repositorio": "",
-  "_repositorio": "URL SSH o HTTPS del repositorio privado de distribución (el que ven los clientes). Vale tu alias SSH, p. ej. git@github-genframe:AwsystemsES/genframe-studio.git. Vacío: se prepara en local y no se publica.",
+  "_repositorio": "URL SSH o HTTPS del repositorio privado de distribución (el que ven los clientes). Vale tu alias SSH, p. ej. git@github-genframe:AwsystemsES/turboframe.git. Vacío: se prepara en local y no se publica.",
   "excluir": [
     "docs/",
     "producto/",
@@ -25,11 +25,12 @@
     "diesel-deal",
     "normandia",
     "crack29",
-    "gpt-6"
+    "gpt-6",
+    "genframe"
   ],
   "autor": {
-    "nombre": "genframe",
-    "correo": "genframe@users.noreply.github.com"
+    "nombre": "TurboFrame",
+    "correo": "turboframe@users.noreply.github.com"
   },
   "_autor": "Firma de los commits del repositorio de distribución (lo que ven los clientes en git log)."
 }

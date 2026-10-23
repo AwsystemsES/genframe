@@ -426,7 +426,7 @@
 
   /**
    * Auditoría de los textos visibles en t: cortados por el borde, fuera de la zona segura, metidos en la franja de
-   * subtítulos o solapados entre sí. Devuelve [{tipo, grave, texto}]. La usa «genframe auditar».
+   * subtítulos o solapados entre sí. Devuelve [{tipo, grave, texto}]. La usa «turboframe auditar».
    */
   K.auditDom = function () {
     const S = K.safe, out = [], seen = [];

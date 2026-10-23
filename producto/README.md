@@ -1,4 +1,4 @@
-# Producto: genframe para clientes
+# Producto: TurboFrame para clientes
 
 Esta carpeta convierte el motor en el producto que se vende. Los clientes reciben **una copia limpia del motor**: sin documentos internos, sin tus proyectos y sin rutas ni datos tuyos. La reciben por un **repositorio privado de GitHub de distribución**, distinto de este, y la usan con su propio Claude Code y sus propias claves. Este repositorio sigue siendo el de desarrollo: aquí se trabaja, y de aquí sale cada versión.
 
@@ -13,7 +13,7 @@ Esta carpeta convierte el motor en el producto que se vende. Los clientes recibe
 | `AVISOS-TERCEROS.md` | Licencias de los componentes de terceros (todas permiten el uso comercial). |
 | `plantillas/README.md` | README del cliente: instalación pensada para quien no sabe programar, comprobación, actualizar, soporte y licencia. |
 | `plantillas/skill-mejorar.md` | Sustituye en la skill del cliente la sección «Mejorar el motor»: el cliente no toca el motor, anota los fallos para el soporte. |
-| `salida/` (no se sube) | El repositorio de distribución en local (`salida/genframe/`) y el zip de cada versión. |
+| `salida/` (no se sube) | El repositorio de distribución en local (`salida/turboframe/`) y el zip de cada versión. |
 
 ## Qué cambia en el paquete respecto a este repositorio
 
@@ -25,8 +25,8 @@ Esta carpeta convierte el motor en el producto que se vende. Los clientes recibe
 
 ## Puesta en marcha (una vez)
 
-1. Crea en GitHub un repositorio **privado y vacío** para los clientes (por ejemplo `AwsystemsES/genframe-studio`).
-2. Pon su dirección en `producto.json` → `repositorio`. Vale tu alias SSH: `git@github-genframe:AwsystemsES/genframe-studio.git`.
+1. Crea en GitHub un repositorio **privado y vacío** para los clientes (por ejemplo `AwsystemsES/turboframe`).
+2. Pon su dirección en `producto.json` → `repositorio`. Vale tu alias SSH: `git@github-genframe:AwsystemsES/turboframe.git`.
 3. Conecta la tienda (Whop u otra) con GitHub para que cada compra invite al cliente al repositorio y cada baja le quite el acceso. Sin acceso, `actualizar` deja de traer versiones, pero el cliente conserva la que tiene.
 4. Revisa `LICENCIA.md` con un abogado.
 
@@ -46,22 +46,22 @@ Esta carpeta convierte el motor en el producto que se vende. Los clientes recibe
    node producto/empaquetar.mjs
    ```
 
-   Mira `producto/salida/genframe/`. Para ensayar antes del commit existe `--permitir-cambios`, que no crea commit, etiqueta ni zip.
+   Mira `producto/salida/turboframe/`. Para ensayar antes del commit existe `--permitir-cambios`, que no crea commit, etiqueta ni zip.
 7. Publica:
 
    ```bash
    node producto/empaquetar.mjs --publicar
    ```
 
-   Sube la rama `main` y la etiqueta `vX.Y.Z`. Los clientes la reciben con `node bin/genframe.mjs actualizar`.
+   Sube la rama `main` y la etiqueta `vX.Y.Z`. Los clientes la reciben con `node bin/turboframe.mjs actualizar`.
 
 Una versión publicada no se rehace: si el motor cambia después, el empaquetador pide subir la versión.
 
 ## Lo que ve el cliente
 
-- `node bin/genframe.mjs comprobar`: revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves sin enseñarlas, skill y espacio) y monta un vídeo de prueba. Acaba en «✔ todo listo» o dice qué arreglar.
-- `node bin/genframe.mjs version`: su versión.
-- `node bin/genframe.mjs actualizar`: descarga la última versión, reinstala y le enseña las novedades. Se niega si el cliente ha modificado el motor, para no pisar sus cambios ni romper la actualización. Sus `proyectos/` y su `.env` no se tocan nunca.
+- `node bin/turboframe.mjs comprobar`: revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves sin enseñarlas, skill y espacio) y monta un vídeo de prueba. Acaba en «✔ todo listo» o dice qué arreglar.
+- `node bin/turboframe.mjs version`: su versión.
+- `node bin/turboframe.mjs actualizar`: descarga la última versión, reinstala y le enseña las novedades. Se niega si el cliente ha modificado el motor, para no pisar sus cambios ni romper la actualización. Sus `proyectos/` y su `.env` no se tocan nunca.
 - Si algo del motor falla, Claude lo anota en `proyectos/<nombre>/fallos-motor.md` para que te lo envíe.
 
 ## Pendiente o sin probar

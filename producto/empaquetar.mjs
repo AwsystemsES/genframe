@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
- * Empaqueta genframe para los clientes: una copia limpia del motor, sin nada personal, con su README de cliente, licencia,
- * avisos de terceros y novedades, en producto/salida/genframe/ (un repositorio git propio, el de distribución) y en un zip.
+ * Empaqueta TurboFrame para los clientes: una copia limpia del motor, sin nada personal, con su README de cliente, licencia,
+ * avisos de terceros y novedades, en producto/salida/turboframe/ (un repositorio git propio, el de distribución) y en un zip.
  *
  *   node producto/empaquetar.mjs              prepara la versión de package.json en local
  *   node producto/empaquetar.mjs --publicar   además la sube al repositorio de producto.json (rama main y etiqueta vX.Y.Z)
@@ -17,7 +17,7 @@ import {fileURLToPath} from 'url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const OUT = path.join(HERE, 'salida');
-const DEST = path.join(OUT, 'genframe');
+const DEST = path.join(OUT, 'turboframe');
 const args = new Set(process.argv.slice(2));
 const die = (m) => { console.error('✖ ' + m); process.exit(1); };
 const git = (a, cwd = ROOT) => execFileSync('git', a, {cwd, encoding: 'utf8', maxBuffer: 1 << 26}).trim();
@@ -38,7 +38,7 @@ const repo = cfg.repositorio || '';
 // Vale cualquier forma: https://github.com/org/repo, git@github.com:org/repo.git o un alias SSH (git@github-genframe:org/repo.git).
 const m = /[:/]([^/:]+)\/([^/:]+?)(\.git)?$/.exec(repo);
 const urls = m ? {web: `https://github.com/${m[1]}/${m[2]}`, https: `https://github.com/${m[1]}/${m[2]}.git`, ssh: `git@github.com:${m[1]}/${m[2]}.git`}
-  : {web: 'https://github.com/TU-ORGANIZACION/genframe', https: 'https://github.com/TU-ORGANIZACION/genframe.git', ssh: 'git@github.com:TU-ORGANIZACION/genframe.git'};
+  : {web: 'https://github.com/TU-ORGANIZACION/turboframe', https: 'https://github.com/TU-ORGANIZACION/turboframe.git', ssh: 'git@github.com:TU-ORGANIZACION/turboframe.git'};
 if (!m) console.warn('⚠ producto.json no tiene «repositorio»: el README sale con TU-ORGANIZACION y no se puede publicar.');
 
 // 4. Copia limpia: se vacía la salida (salvo su .git) y se copia lo que está en git, menos lo excluido.
@@ -52,10 +52,10 @@ for (const f of files) { fs.mkdirSync(path.dirname(path.join(DEST, f)), {recursi
 const fill = (s) => s.replace(/\{\{REPO_WEB\}\}/g, urls.web).replace(/\{\{REPO_HTTPS\}\}/g, urls.https).replace(/\{\{REPO_SSH\}\}/g, urls.ssh).replace(/\{\{VERSION\}\}/g, version);
 fs.writeFileSync(path.join(DEST, 'README.md'), fill(read(path.join(HERE, 'plantillas', 'README.md'))));
 for (const f of ['LICENCIA.md', 'AVISOS-TERCEROS.md', 'CAMBIOS.md']) fs.copyFileSync(path.join(HERE, f), path.join(DEST, f));
-const skillPath = path.join(DEST, '.claude', 'skills', 'genframe', 'SKILL.md');
+const skillPath = path.join(DEST, '.claude', 'skills', 'turboframe', 'SKILL.md');
 let skill = read(skillPath);
 // Sin rutas del ordenador del autor.
-skill = skill.replace(/^- Repositorio: .*$/m, '- Repositorio: la carpeta que contiene `bin/genframe.mjs` (donde se instaló genframe). Ejecuta los comandos desde ahí: `node bin/genframe.mjs <comando>`.');
+skill = skill.replace(/^- Repositorio: .*$/m, '- Repositorio: la carpeta que contiene `bin/turboframe.mjs` (donde se instaló TurboFrame). Ejecuta los comandos desde ahí: `node bin/turboframe.mjs <comando>`.');
 // El cliente no modifica el motor: los fallos se anotan para el soporte.
 const a = skill.indexOf('## Mejorar el motor'), b = skill.indexOf('\n## ', a + 5);
 if (a < 0 || b < 0) die('No encuentro la sección «## Mejorar el motor» de la skill: actualiza empaquetar.mjs.');
@@ -69,9 +69,9 @@ walk(DEST);
 if (hits.length) die('El paquete contiene datos personales:\n  ' + hits.join('\n  '));
 
 // 7. Repositorio de distribución: un commit y una etiqueta por versión (en una prueba, ni lo uno ni lo otro).
-if (args.has('--permitir-cambios')) { console.log(`✔ prueba de genframe ${version}: ${files.length} ficheros en ${path.relative(ROOT, DEST)}/ (sin commit, etiqueta ni zip)`); process.exit(0); }
+if (args.has('--permitir-cambios')) { console.log(`✔ prueba de TurboFrame ${version}: ${files.length} ficheros en ${path.relative(ROOT, DEST)}/ (sin commit, etiqueta ni zip)`); process.exit(0); }
 // Sin repositorio de distribución, la versión no es oficial: se deja preparada para revisarla, sin fijarla con etiqueta.
-if (!m) { console.log(`✔ genframe ${version} preparada en ${path.relative(ROOT, DEST)}/ para revisarla (sin commit, etiqueta ni zip hasta que haya repositorio en producto.json)`); process.exit(0); }
+if (!m) { console.log(`✔ TurboFrame ${version} preparada en ${path.relative(ROOT, DEST)}/ para revisarla (sin commit, etiqueta ni zip hasta que haya repositorio en producto.json)`); process.exit(0); }
 if (!fs.existsSync(path.join(DEST, '.git'))) { git(['init', '-q', '-b', 'main'], DEST); }
 git(['add', '-A'], DEST);
 const changed = git(['status', '--porcelain'], DEST);
@@ -79,14 +79,14 @@ const tags = git(['tag', '--list'], DEST).split('\n');
 if (changed) {
   if (tags.includes('v' + version)) die(`La ${version} ya está publicada y el motor ha cambiado: sube la versión en package.json y añade sus novedades.`);
   // Firmado con el nombre del producto, no con la identidad personal del autor.
-  git(['-c', `user.name=${cfg.autor.nombre}`, '-c', `user.email=${cfg.autor.correo}`, 'commit', '-q', '-m', `genframe ${version}`], DEST);
+  git(['-c', `user.name=${cfg.autor.nombre}`, '-c', `user.email=${cfg.autor.correo}`, 'commit', '-q', '-m', `TurboFrame ${version}`], DEST);
   git(['tag', 'v' + version], DEST);
 } else if (!tags.includes('v' + version)) git(['tag', 'v' + version], DEST);
-const zip = path.join(OUT, `genframe-${version}.zip`);
-git(['archive', '--format=zip', `--prefix=genframe/`, '-o', zip, 'v' + version], DEST);
+const zip = path.join(OUT, `turboframe-${version}.zip`);
+git(['archive', '--format=zip', `--prefix=turboframe/`, '-o', zip, 'v' + version], DEST);
 
 const size = (d) => fs.readdirSync(d, {withFileTypes: true}).reduce((s, e) => (e.name === '.git' ? s : s + (e.isDirectory() ? size(path.join(d, e.name)) : fs.statSync(path.join(d, e.name)).size)), 0);
-console.log(`✔ genframe ${version}: ${files.length} ficheros, ${(size(DEST) / 1e6).toFixed(1)} MB → ${path.relative(ROOT, DEST)}/ y ${path.relative(ROOT, zip)}`);
+console.log(`✔ TurboFrame ${version}: ${files.length} ficheros, ${(size(DEST) / 1e6).toFixed(1)} MB → ${path.relative(ROOT, DEST)}/ y ${path.relative(ROOT, zip)}`);
 
 // 8. Publicar.
 if (args.has('--publicar')) {
@@ -95,5 +95,5 @@ if (args.has('--publicar')) {
   if (!remotes.includes('origin')) git(['remote', 'add', 'origin', repo], DEST); else git(['remote', 'set-url', 'origin', repo], DEST);
   git(['push', '-u', 'origin', 'main'], DEST);
   git(['push', 'origin', '--tags'], DEST);
-  console.log(`✔ publicada en ${urls.web}: los clientes la reciben con «node bin/genframe.mjs actualizar».`);
+  console.log(`✔ publicada en ${urls.web}: los clientes la reciben con «node bin/turboframe.mjs actualizar».`);
 } else console.log('Para publicarla: pon «repositorio» en producto/producto.json y ejecuta «node producto/empaquetar.mjs --publicar».');

@@ -1,6 +1,6 @@
 # Avisos de terceros
 
-genframe usa componentes de código abierto y recursos libres. Todos permiten el uso comercial. Sus licencias completas se instalan con `npm install`, junto a cada paquete en `node_modules/`.
+TurboFrame usa componentes de código abierto y recursos libres. Todos permiten el uso comercial. Sus licencias completas se instalan con `npm install`, junto a cada paquete en `node_modules/`.
 
 | Recurso | Origen | Licencia | Obligación |
 |---|---|---|---|
@@ -17,4 +17,4 @@ genframe usa componentes de código abierto y recursos libres. Todos permiten el
 
 ## Apache License 2.0 (HyperFrames)
 
-HyperFrames se distribuye bajo la Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). genframe lo usa sin modificarlo, como dependencia de npm.
+HyperFrames se distribuye bajo la Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). TurboFrame lo usa sin modificarlo, como dependencia de npm.

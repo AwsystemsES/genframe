@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * genframe: estudio de vídeos explicativos generados por código. Claude (con la skill genframe) escribe la
+ * TurboFrame: estudio de vídeos explicativos generados por código. Claude (con la skill turboframe) escribe la
  * dirección, fabrica las piezas y programa las escenas; esta herramienta pone la voz (ElevenLabs), monta el
  * proyecto HyperFrames, hace fotos para revisar, mezcla el audio y renderiza el MP4.
  *
@@ -10,7 +10,7 @@
  *   piezas/<id>.js   cuerpo de la función constructora de cada pieza (3D por defecto; «// 2d» en la primera línea para dibujos)
  *   escenas/<id>.js  cuerpo de la función de cada escena (root, T0, T1)
  *   capa.js          (opcional) capa común encima de todo el vídeo
- *   voz.mp3, palabras.json   los genera «genframe voz»
+ *   voz.mp3, palabras.json   los genera «turboframe voz»
  */
 import fs from 'fs';
 import path from 'path';
@@ -53,7 +53,7 @@ function project(name) {
   // Un nombre es un proyecto de proyectos/; una ruta (con / o que empiece por .) es cualquier carpeta.
   const dir = /[\\/]/.test(name) || name.startsWith('.') ? path.resolve(name) : path.join(PROJECTS, name);
   name = path.basename(dir);
-  if (!fs.existsSync(dir)) die(`No existe el proyecto ${name} (crea uno con «genframe nuevo ${name}»).`);
+  if (!fs.existsSync(dir)) die(`No existe el proyecto ${name} (crea uno con «turboframe nuevo ${name}»).`);
   const read = (f, d = null) => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : d);
   const plan = JSON.parse(read('plan.json', '{}'));
   const words = JSON.parse(read('palabras.json', '[]'));
@@ -74,7 +74,7 @@ function duration(p) {
   return r3((p.plan.duracion || (last ? last.b + 1.2 : 5)));
 }
 
-/** Escenas con su tramo: cada escena cubre las frases [desde, hasta] (numeradas desde 1, como «genframe frases»). */
+/** Escenas con su tramo: cada escena cubre las frases [desde, hasta] (numeradas desde 1, como «turboframe frases»). */
 function timedScenes(p) {
   const sents = sentences(p.words);
   const total = duration(p);
@@ -164,7 +164,7 @@ async function sheet(files, out, cols, width) {
 /* ------------------------------------------------------------------ voz (ElevenLabs) */
 async function eleven(pathname, body = null) {
   const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) die('Falta ELEVENLABS_API_KEY en el .env de genframe.');
+  if (!key) die('Falta ELEVENLABS_API_KEY en el .env de TurboFrame.');
   const res = await fetch('https://api.elevenlabs.io/v1' + pathname, {method: body ? 'POST' : 'GET', headers: {'xi-api-key': key, 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   const data = await res.json().catch(() => ({}));
   if (!res.ok) die(`ElevenLabs ${res.status}: ${JSON.stringify(data.detail || data).slice(0, 300)}`);
@@ -219,7 +219,7 @@ async function voice(p, args) {
   const text = (p.read('guion.txt') || '').trim();
   if (!text) die('guion.txt está vacío.');
   const voiceId = args.voz || p.plan.voz?.id || process.env.ELEVENLABS_VOICE_ID;
-  if (!voiceId) die('Falta la voz: «--voz <id>», plan.voz.id o ELEVENLABS_VOICE_ID (lista con «genframe voces»).');
+  if (!voiceId) die('Falta la voz: «--voz <id>», plan.voz.id o ELEVENLABS_VOICE_ID (lista con «turboframe voces»).');
   const model = args.modelo || p.plan.voz?.modelo || process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
   const settings = {stability: 0.45, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true, ...(p.plan.voz?.ajustes || {})};
   const parts = chunks(text);
@@ -416,12 +416,12 @@ async function doctor() {
     if (process.env.ELEVENLABS_API_KEY) ok('clave de ElevenLabs puesta (no se comprueba ni se enseña)'); else bad('ELEVENLABS_API_KEY está vacía en el .env', 'pon tu clave de ElevenLabs en el .env');
     if (process.env.ELEVENLABS_VOICE_ID) ok('voz por defecto puesta'); else warn('ELEVENLABS_VOICE_ID está vacía', 'pon el Voice ID en el .env (o una voz en cada plan.json)');
   }
-  const skill = path.join(os.homedir(), '.claude', 'skills', 'genframe');
-  if (fs.existsSync(skill)) ok('skill genframe disponible en Claude Code'); else warn('la skill solo funciona abriendo Claude Code en esta carpeta', 'ejecuta «npm run instalar-skill» para tenerla en cualquier sesión');
+  const skill = path.join(os.homedir(), '.claude', 'skills', 'turboframe');
+  if (fs.existsSync(skill)) ok('skill TurboFrame disponible en Claude Code'); else warn('la skill solo funciona abriendo Claude Code en esta carpeta', 'ejecuta «npm run instalar-skill» para tenerla en cualquier sesión');
   try { const st = fs.statfsSync(ROOT), gb = (st.bavail * st.bsize) / 1e9; if (gb >= 2) ok(`${gb.toFixed(0)} GB libres`); else warn(`solo ${gb.toFixed(1)} GB libres`, 'deja al menos 2 GB para renders'); } catch { /* sin statfs */ }
   // Montaje de prueba: un proyecto vacío montado y validado en el navegador de render.
   if (!res.some(([s]) => s === '✖')) {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'genframe-comprobacion-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'turboframe-comprobacion-'));
     try {
       for (const d of ['piezas', 'escenas']) fs.mkdirSync(path.join(tmp, d));
       fs.writeFileSync(path.join(tmp, 'guion.txt'), '');
@@ -438,7 +438,7 @@ async function doctor() {
 /* ------------------------------------------------------------------ comandos */
 const COMMANDS = {
   async comprobar() {
-    console.log(`genframe ${VERSION} · comprobando la instalación…`);
+    console.log(`TurboFrame ${VERSION} · comprobando la instalación…`);
     const res = await doctor();
     for (const [s, t, fix] of res) console.log(`${s} ${t}${fix ? ` → ${fix}` : ''}`);
     const n = res.filter(([s]) => s === '✖').length;
@@ -447,7 +447,7 @@ const COMMANDS = {
   },
   async version() {
     const last = changelog()[0];
-    console.log(`genframe ${VERSION}` + (last && last.version !== VERSION ? ` (última en CAMBIOS.md: ${last.titulo})` : ''));
+    console.log(`TurboFrame ${VERSION}` + (last && last.version !== VERSION ? ` (última en CAMBIOS.md: ${last.titulo})` : ''));
   },
   /** Actualiza a la última versión publicada: git pull, npm install y las novedades desde la versión que había. */
   async actualizar() {
@@ -455,9 +455,9 @@ const COMMANDS = {
     // npm puede reescribir package-lock.json en cada ordenador: no es un cambio del cliente y no debe bloquear.
     try { await run('git', ['checkout', '--', 'package-lock.json'], {cwd: ROOT}); } catch { /* sin lock */ }
     const {stdout: dirty} = await run('git', ['status', '--porcelain', '--untracked-files=no'], {cwd: ROOT});
-    if (dirty.trim()) die('Hay cambios en el motor (' + dirty.split('\n').filter((l) => l.trim()).map((l) => l.slice(3)).slice(0, 4).join(', ') + '): las actualizaciones lo sustituyen. Deshazlos con «git checkout -- .» (tus proyectos no se tocan) o pide ayuda al soporte.');
+    if (dirty.trim()) die('Hay cambios en el motor de TurboFrame (' + dirty.split('\n').filter((l) => l.trim()).map((l) => l.slice(3)).slice(0, 4).join(', ') + '): las actualizaciones lo sustituyen. Deshazlos con «git checkout -- .» (tus proyectos no se tocan) o pide ayuda al soporte de TurboFrame.');
     const before = VERSION;
-    console.log(`genframe ${before} · buscando la versión nueva…`);
+    console.log(`TurboFrame ${before} · buscando la versión nueva…`);
     try { await run('git', ['pull', '--ff-only'], {cwd: ROOT}); } catch (e) { die('No se pudo descargar: ' + (e.stderr || e.message).trim().split('\n')[0] + '. ¿Sigue activa tu suscripción y tu acceso a GitHub?'); }
     const after = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
     if (after === before) { console.log('✔ ya tienes la última versión'); return; }
@@ -467,7 +467,7 @@ const COMMANDS = {
     for (const c of changelog().filter((c) => newer(c.version, before))) console.log(`## ${c.titulo}\n${c.texto}\n`);
   },
   async nuevo([name, fmt]) {
-    if (!name) die('Uso: genframe nuevo <nombre> [16:9|9:16]');
+    if (!name) die('Uso: turboframe nuevo <nombre> [16:9|9:16]');
     const dir = path.join(PROJECTS, name);
     if (fs.existsSync(dir)) die('Ya existe ' + dir);
     for (const d of ['piezas', 'escenas']) fs.mkdirSync(path.join(dir, d), {recursive: true});
@@ -485,20 +485,20 @@ const COMMANDS = {
   },
   async afinar([name]) {
     const p = project(name);
-    if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Falta voz.mp3 («genframe voz»).');
+    if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Falta voz.mp3 («turboframe voz»).');
     await tune(p);
   },
   async revisar([name]) {
     const p = project(name);
     const mp4 = path.join(p.dir, path.basename(p.dir) + '.mp4');
-    if (!fs.existsSync(mp4)) die('Falta ' + mp4 + ' («genframe render»).');
+    if (!fs.existsSync(mp4)) die('Falta ' + mp4 + ' («turboframe render»).');
     const rev = await checkMp4(mp4);
     for (const x of rev.out) console.log('⚠ ' + x);
     console.log(rev.out.length ? `${rev.out.length} avisos en ${rev.frames} fotogramas` : `✔ ${rev.frames} fotogramas sin destellos, negros ni congelados`);
   },
   async frases([name]) {
     const p = project(name);
-    if (!p.words.length) die('Primero «genframe voz ' + name + '».');
+    if (!p.words.length) die('Primero «turboframe voz ' + name + '».');
     for (const s of sentences(p.words)) console.log(`${s.n}. [${s.a.toFixed(2)}–${s.b.toFixed(2)}] ${s.text}`);
     console.log(`duración ${duration(p)} s`);
   },
@@ -529,7 +529,7 @@ const COMMANDS = {
     if (args.en) { times = args.en.split(',').map(Number); labels = times.map((t) => t.toFixed(1) + ' s'); }
     const pick = args.escena ? scenes.filter((s) => s.id === args.escena) : args.todas ? scenes : [];
     for (const s of pick) for (const f of [0.15, 0.5, 0.88]) { times.push(r3(s.start + (s.end - s.start) * f)); labels.push(`${s.id} ${(s.start + (s.end - s.start) * f).toFixed(1)} s`); }
-    if (!times.length) die('Uso: genframe fotos <proyecto> --en=1.2,3.4 | --escena=<id> | --todas');
+    if (!times.length) die('Uso: turboframe fotos <proyecto> --en=1.2,3.4 | --escena=<id> | --todas');
     const out = await COMMANDS.montar([name]);
     const errors = await validate(out);
     for (const e of errors) console.log('✖ ' + (e.text || JSON.stringify(e)));
@@ -601,7 +601,7 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
   },
   async audio([name]) {
     const p = project(name);
-    if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Falta voz.mp3 («genframe voz»).');
+    if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Falta voz.mp3 («turboframe voz»).');
     const scenes = timedScenes(p);
     const cue = (word, after) => { const k = strip(word).slice(0, 14); const w = p.words.find((x) => x.a >= after - 0.05 && k && strip(x.t).startsWith(k)); return w ? w.a : null; };
     const sfx = [], amb = [];
@@ -690,7 +690,7 @@ async function renderTramos(p, mp4, {forzar = false, len = 45} = {}) {
 
 const [cmd, ...rest] = process.argv.slice(2);
 if (!COMMANDS[cmd]) {
-  console.log(`genframe ${VERSION} <comando>
+  console.log(`turboframe ${VERSION} <comando>
   comprobar                    revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves, skill) y monta una prueba
   version                      versión instalada
   actualizar                   descarga la última versión y enseña las novedades
