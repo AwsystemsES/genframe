@@ -70,6 +70,8 @@ if (hits.length) die('El paquete contiene datos personales:\n  ' + hits.join('\n
 
 // 7. Repositorio de distribución: un commit y una etiqueta por versión (en una prueba, ni lo uno ni lo otro).
 if (args.has('--permitir-cambios')) { console.log(`✔ prueba de genframe ${version}: ${files.length} ficheros en ${path.relative(ROOT, DEST)}/ (sin commit, etiqueta ni zip)`); process.exit(0); }
+// Sin repositorio de distribución, la versión no es oficial: se deja preparada para revisarla, sin fijarla con etiqueta.
+if (!m) { console.log(`✔ genframe ${version} preparada en ${path.relative(ROOT, DEST)}/ para revisarla (sin commit, etiqueta ni zip hasta que haya repositorio en producto.json)`); process.exit(0); }
 if (!fs.existsSync(path.join(DEST, '.git'))) { git(['init', '-q', '-b', 'main'], DEST); }
 git(['add', '-A'], DEST);
 const changed = git(['status', '--porcelain'], DEST);
