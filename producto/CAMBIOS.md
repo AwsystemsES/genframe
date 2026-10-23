@@ -1,0 +1,17 @@
+# Novedades de genframe
+
+Cada versión, lo que trae. `node bin/genframe.mjs actualizar` instala la última y te enseña lo nuevo desde la tuya.
+
+## 1.0.0 · 2026-10-23
+
+Primera versión pública.
+
+- **Estudio completo con Claude Code:** Claude dirige, escribe el guion visual, fabrica las piezas, programa las escenas y revisa cada plano mirando las imágenes; genframe pone la voz (ElevenLabs), monta, fotografía, audita, mezcla y renderiza.
+- **3D de cine:** cielo físico y luz de entorno, materiales realistas, sombras, oclusión ambiental, resplandor, desenfoque de movimiento real, profundidad de campo, capas de película (cine, archivo, cálida, noche) y niebla con perspectiva aérea.
+- **Naturaleza y mundo:** mar con olas reales, lagos y ríos, montañas, árboles y animales articulados con anatomía real, hierba que se mece, nubes de volumen que se pueden atravesar, humo y fuego iluminados, ciudades, campo e interiores con tráfico y peatones.
+- **Cámara:** encuadres automáticos, barrido rápido, golpe de zoom, efecto vértigo y cámara en mano.
+- **Personas, barcos y piezas:** generadores de personas, cascos de barco, árboles y animales; formas redondeadas, acabados con textura y rótulos que siempre caben.
+- **2D:** mapas reales (también tumbados en perspectiva, con rutas y rótulos), gráficos, iconos, banderas y textos que nunca se salen.
+- **Subtítulos:** varios estilos, entre ellos `cine`, con la palabra que suena encendida y la palabra clave destacada; tiempos ajustados a la voz real.
+- **Control de calidad:** auditoría automática (choques, cámara, textos, planos quietos u oscuros y cifras en pantalla que el guion no dice) y revisión del MP4 final (destellos, negros, congelados).
+- **Render por tramos con caché:** en vídeos largos, cambiar una escena solo vuelve a renderizar su tramo.

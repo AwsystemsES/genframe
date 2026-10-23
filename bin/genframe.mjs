@@ -20,6 +20,7 @@ import {fileURLToPath} from 'url';
 import {createRequire} from 'module';
 import {unspoken} from '../src/cifras.mjs';
 import crypto from 'crypto';
+import os from 'os';
 
 const run = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -386,8 +387,85 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
   return {graves, avisos};
 }
 
+/* ------------------------------------------------------------------ versión e instalación */
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+const semver = (v) => String(v).split('.').map((n) => parseInt(n, 10) || 0);
+const newer = (a, b) => { const x = semver(a), y = semver(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+/** Novedades de CAMBIOS.md (en el paquete, en la raíz; en el repositorio de desarrollo, en producto/): [{version, titulo, texto}]. */
+function changelog() {
+  const f = [path.join(ROOT, 'CAMBIOS.md'), path.join(ROOT, 'producto', 'CAMBIOS.md')].find((x) => fs.existsSync(x));
+  if (!f) return [];
+  return fs.readFileSync(f, 'utf8').split(/^## /m).slice(1).map((b) => { const [titulo, ...rest] = b.split('\n'); return {version: titulo.split(/\s/)[0], titulo: titulo.trim(), texto: rest.join('\n').trim()}; });
+}
+
+/** Comprobación de la instalación: qué falta y cómo arreglarlo, sin gastar nada ni enseñar claves. */
+async function doctor() {
+  const res = [];
+  const ok = (t) => res.push(['✔', t]), warn = (t, fix) => res.push(['⚠', t, fix]), bad = (t, fix) => res.push(['✖', t, fix]);
+  const major = parseInt(process.versions.node, 10);
+  if (major >= 20) ok(`Node ${process.versions.node}`); else bad(`Node ${process.versions.node}: hace falta la 20 o superior`, 'instala la versión LTS desde nodejs.org');
+  if (fs.existsSync(HF)) ok('dependencias instaladas'); else bad('faltan las dependencias', 'ejecuta «npm install» en esta carpeta');
+  if (fs.existsSync(path.join(ROOT, 'dist', 'three.js'))) ok('Three.js empaquetado'); else bad('falta dist/three.js', 'ejecuta «npm run build»');
+  try { await run(FFMPEG, ['-version']); ok('ffmpeg'); } catch { bad('ffmpeg no arranca', 'ejecuta «npm install» o pon FFMPEG= en el .env'); }
+  let chrome = null;
+  try { chrome = findChrome(); } catch { /* sin Chrome */ }
+  if (chrome && fs.existsSync(chrome)) ok('Chrome de render'); else bad('no encuentro el Chrome de render', 'ejecuta «npx hyperframes browser ensure» o pon CHROME= en el .env');
+  try { await run(PYTHON, ['-c', 'import numpy']); ok(`Python con numpy (${PYTHON})`); } catch { bad(`Python con numpy (${PYTHON}) no funciona`, 'python3 -m pip install --user numpy, o un entorno virtual con PYTHON= en el .env'); }
+  if (!fs.existsSync(path.join(ROOT, '.env'))) bad('falta el fichero .env', 'cópialo de .env.example y pon tu clave de ElevenLabs');
+  else {
+    if (process.env.ELEVENLABS_API_KEY) ok('clave de ElevenLabs puesta (no se comprueba ni se enseña)'); else bad('ELEVENLABS_API_KEY está vacía en el .env', 'pon tu clave de ElevenLabs en el .env');
+    if (process.env.ELEVENLABS_VOICE_ID) ok('voz por defecto puesta'); else warn('ELEVENLABS_VOICE_ID está vacía', 'pon el Voice ID en el .env (o una voz en cada plan.json)');
+  }
+  const skill = path.join(os.homedir(), '.claude', 'skills', 'genframe');
+  if (fs.existsSync(skill)) ok('skill genframe disponible en Claude Code'); else warn('la skill solo funciona abriendo Claude Code en esta carpeta', 'ejecuta «npm run instalar-skill» para tenerla en cualquier sesión');
+  try { const st = fs.statfsSync(ROOT), gb = (st.bavail * st.bsize) / 1e9; if (gb >= 2) ok(`${gb.toFixed(0)} GB libres`); else warn(`solo ${gb.toFixed(1)} GB libres`, 'deja al menos 2 GB para renders'); } catch { /* sin statfs */ }
+  // Montaje de prueba: un proyecto vacío montado y validado en el navegador de render.
+  if (!res.some(([s]) => s === '✖')) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'genframe-comprobacion-'));
+    try {
+      for (const d of ['piezas', 'escenas']) fs.mkdirSync(path.join(tmp, d));
+      fs.writeFileSync(path.join(tmp, 'guion.txt'), '');
+      fs.writeFileSync(path.join(tmp, 'plan.json'), JSON.stringify({formato: '16:9', arte: {}, escenas: []}));
+      const out = path.join(tmp, 'proyecto');
+      assemble(job(project(tmp)), out);
+      const errors = await validate(out);
+      if (!errors.length) ok('montaje de prueba en el navegador de render'); else bad('el montaje de prueba falla: ' + (errors[0].text || JSON.stringify(errors[0])).slice(0, 120), 'revisa los pasos anteriores o reinstala con «npm install»');
+    } catch (e) { bad('el montaje de prueba falla: ' + e.message.split('\n')[0], 'reinstala con «npm install»'); } finally { fs.rmSync(tmp, {recursive: true, force: true}); }
+  }
+  return res;
+}
+
 /* ------------------------------------------------------------------ comandos */
 const COMMANDS = {
+  async comprobar() {
+    console.log(`genframe ${VERSION} · comprobando la instalación…`);
+    const res = await doctor();
+    for (const [s, t, fix] of res) console.log(`${s} ${t}${fix ? ` → ${fix}` : ''}`);
+    const n = res.filter(([s]) => s === '✖').length;
+    console.log(n ? `✖ ${n} problema${n > 1 ? 's' : ''}: arréglalo${n > 1 ? 's' : ''} y vuelve a comprobar` : '✔ todo listo');
+    if (n) process.exitCode = 1;
+  },
+  async version() {
+    const last = changelog()[0];
+    console.log(`genframe ${VERSION}` + (last && last.version !== VERSION ? ` (última en CAMBIOS.md: ${last.titulo})` : ''));
+  },
+  /** Actualiza a la última versión publicada: git pull, npm install y las novedades desde la versión que había. */
+  async actualizar() {
+    if (!fs.existsSync(path.join(ROOT, '.git'))) die('Esta copia no se instaló con git: descarga la versión nueva y copia tu carpeta proyectos/ y tu .env.');
+    // npm puede reescribir package-lock.json en cada ordenador: no es un cambio del cliente y no debe bloquear.
+    try { await run('git', ['checkout', '--', 'package-lock.json'], {cwd: ROOT}); } catch { /* sin lock */ }
+    const {stdout: dirty} = await run('git', ['status', '--porcelain', '--untracked-files=no'], {cwd: ROOT});
+    if (dirty.trim()) die('Hay cambios en el motor (' + dirty.split('\n').filter((l) => l.trim()).map((l) => l.slice(3)).slice(0, 4).join(', ') + '): las actualizaciones lo sustituyen. Deshazlos con «git checkout -- .» (tus proyectos no se tocan) o pide ayuda al soporte.');
+    const before = VERSION;
+    console.log(`genframe ${before} · buscando la versión nueva…`);
+    try { await run('git', ['pull', '--ff-only'], {cwd: ROOT}); } catch (e) { die('No se pudo descargar: ' + (e.stderr || e.message).trim().split('\n')[0] + '. ¿Sigue activa tu suscripción y tu acceso a GitHub?'); }
+    const after = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+    if (after === before) { console.log('✔ ya tienes la última versión'); return; }
+    console.log('instalando dependencias…');
+    await run('npm', ['install'], {cwd: ROOT, maxBuffer: 1 << 26});
+    console.log(`✔ actualizado de ${before} a ${after}. Novedades:\n`);
+    for (const c of changelog().filter((c) => newer(c.version, before))) console.log(`## ${c.titulo}\n${c.texto}\n`);
+  },
   async nuevo([name, fmt]) {
     if (!name) die('Uso: genframe nuevo <nombre> [16:9|9:16]');
     const dir = path.join(PROJECTS, name);
@@ -612,7 +690,10 @@ async function renderTramos(p, mp4, {forzar = false, len = 45} = {}) {
 
 const [cmd, ...rest] = process.argv.slice(2);
 if (!COMMANDS[cmd]) {
-  console.log(`genframe <comando>
+  console.log(`genframe ${VERSION} <comando>
+  comprobar                    revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves, skill) y monta una prueba
+  version                      versión instalada
+  actualizar                   descarga la última versión y enseña las novedades
   nuevo <nombre> [16:9|9:16]   crea proyectos/<nombre>
   voces                        lista las voces de ElevenLabs
   voz <nombre> [--voz=ID] [--modelo=eleven_multilingual_v2]   locuta guion.txt → voz.mp3 + palabras.json

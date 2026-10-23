@@ -21,7 +21,7 @@ Necesitas tres cosas. Tu IA hace el resto.
 Después abre Claude Code en la carpeta donde quieras el proyecto (por ejemplo, Documentos) y **pega este mensaje**:
 
 ```text
-Quiero instalar el motor de vídeos genframe. Lee y sigue al pie de la letra la sección «Instrucciones para la IA» del README de https://github.com/AwsystemsES/genframe (repositorio privado: usa mi acceso de GitHub; si no puedes clonarlo, dime exactamente qué tengo que hacer). Instala todo lo que falte en mi ordenador explicándome cada paso en lenguaje sencillo, nunca me pidas las claves en el chat (dime en qué fichero ponerlas yo) y no des la instalación por terminada hasta que la comprobación del paso 6 diga «sin errores».
+Quiero instalar el motor de vídeos genframe. Lee y sigue al pie de la letra la sección «Instrucciones para la IA» del README de https://github.com/AwsystemsES/genframe (repositorio privado: usa mi acceso de GitHub; si no puedes clonarlo, dime exactamente qué tengo que hacer). Instala todo lo que falte en mi ordenador explicándome cada paso en lenguaje sencillo, nunca me pidas las claves en el chat (dime en qué fichero ponerlas yo) y no des la instalación por terminada hasta que la comprobación del paso 6 diga «todo listo».
 ```
 
 Cuando termine, pídele tu primer vídeo; por ejemplo: «hazme un short vertical de 1 minuto sobre el crack del 29». Antes de gastar en ElevenLabs te dirá cuánto cuesta y te pedirá permiso.
@@ -92,11 +92,10 @@ Enlaza `.claude/skills/genframe` en `~/.claude/skills/genframe`, de modo que la 
 ### 6. Verifica que todo funciona
 
 ```bash
-node bin/genframe.mjs nuevo comprobacion
-node bin/genframe.mjs validar comprobacion
+node bin/genframe.mjs comprobar
 ```
 
-Crea un proyecto vacío y lo monta en el navegador de render. Si termina con **«✔ sin errores»**, el motor está bien instalado; después borra la carpeta `proyectos/comprobacion`. No gasta nada.
+Revisa Node, las dependencias, el Chrome de render, ffmpeg, Python con numpy, las claves del `.env` (sin enseñarlas) y la skill, y monta un vídeo de prueba. Si termina con **«✔ todo listo»**, el motor está bien instalado; si no, dice qué falta. No gasta nada.
 
 Para comprobar también la voz, que **cuesta unos céntimos**, pide permiso al usuario antes.
 

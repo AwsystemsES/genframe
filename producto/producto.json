@@ -1,0 +1,35 @@
+{
+  "nombre": "genframe",
+  "descripcion": "Estudio de vídeos explicativos en 2D y 3D generados por código, dirigido por Claude Code.",
+  "repositorio": "",
+  "_repositorio": "URL SSH o HTTPS del repositorio privado de distribución (el que ven los clientes). Vale tu alias SSH, p. ej. git@github-genframe:AwsystemsES/genframe-studio.git. Vacío: se prepara en local y no se publica.",
+  "excluir": [
+    "docs/",
+    "producto/",
+    "proyectos/",
+    ".claude/settings.local.json",
+    ".env"
+  ],
+  "prohibido": [
+    "Autake",
+    "rsaas",
+    "awsystems",
+    "MAMP",
+    "Manuel",
+    "Hetzner",
+    "Frontier",
+    "Primal Robin",
+    "Gfpl8Yo74Is0W6cPUWWT",
+    "ogallala",
+    "appalachians",
+    "diesel-deal",
+    "normandia",
+    "crack29",
+    "gpt-6"
+  ],
+  "autor": {
+    "nombre": "genframe",
+    "correo": "genframe@users.noreply.github.com"
+  },
+  "_autor": "Firma de los commits del repositorio de distribución (lo que ven los clientes en git log)."
+}

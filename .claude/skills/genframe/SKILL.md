@@ -24,6 +24,8 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 
 | Comando | Para qué |
 |---|---|
+| `comprobar` | Revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves sin enseñarlas, skill y espacio) y monta un vídeo de prueba. Úsalo si algo no arranca. |
+| `version` · `actualizar` | Versión instalada · descarga la última y enseña las novedades (los proyectos y el `.env` no se tocan). |
 | `nuevo <nombre> [16:9\|9:16]` | Crea el proyecto. |
 | `voces` | Lista las voces de ElevenLabs (id, nombre, etiquetas). |
 | `voz <nombre> [--voz=ID] [--modelo=eleven_multilingual_v2]` | Locuta `guion.txt` → `voz.mp3` + `palabras.json` (palabras con su instante). Dice lo que cuesta. Después ajusta a la voz real los bordes de las palabras junto a cada pausa (ElevenLabs los marca unos 100 ms tarde); los tiempos originales quedan en `palabras.eleven.json`. |
