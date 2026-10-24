@@ -2,6 +2,11 @@
 
 Cada versión, lo que trae. `node bin/turboframe.mjs actualizar` instala la última y te enseña lo nuevo desde la tuya.
 
+## 1.0.1 · 2026-10-25
+
+- **El ordenador ya no se congela al renderizar:** el render abre los navegadores justos para tu memoria (2 en un ordenador de 16 GB) y con prioridad baja, así que puedes seguir usando el ordenador. Si aun así va justo, pon `TURBOFRAME_WORKERS=1` en el `.env`.
+- `comprobar` dice cuánta RAM tienes y con cuántos navegadores renderizará.
+
 ## 1.0.0 · 2026-10-23
 
 Primera versión pública.

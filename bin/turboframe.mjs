@@ -387,6 +387,25 @@ async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
   return {graves, avisos};
 }
 
+/* ------------------------------------------------------------------ render */
+/*
+ * Cuántos navegadores renderizan a la vez. Cada uno es un Chrome con WebGL y posprocesado: en un Mac de 16 GB, los
+ * ~6 que abre HyperFrames por su cuenta se comen la memoria y congelan todo lo demás (Claude incluido). Con 2, el
+ * render usa la mitad de memoria y tarda un 13 % más (medido el 25-10). Se elige por la RAM total; --workers=N o
+ * TURBOFRAME_WORKERS en el .env lo fijan a mano.
+ */
+function renderWorkers(pedido = null) {
+  const v = pedido || process.env.TURBOFRAME_WORKERS;
+  if (v) return String(v);
+  const gb = os.totalmem() / 2 ** 30;
+  return String(gb <= 17 ? 2 : gb <= 33 ? 3 : Math.min(6, Math.max(4, Math.floor(os.cpus().length / 3))));
+}
+/** Render de HyperFrames con prioridad baja (el Mac sigue respondiendo) y los navegadores justos. */
+function renderHF(rest, {cwd, workers = null}) {
+  const argv = [HF, 'render', '--workers', renderWorkers(workers), ...rest];
+  return process.platform === 'win32' ? run(argv[0], argv.slice(1), {cwd, maxBuffer: 1 << 28}) : run('nice', ['-n', '10', ...argv], {cwd, maxBuffer: 1 << 28});
+}
+
 /* ------------------------------------------------------------------ versión e instalación */
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const semver = (v) => String(v).split('.').map((n) => parseInt(n, 10) || 0);
@@ -418,6 +437,7 @@ async function doctor() {
   }
   const skill = path.join(os.homedir(), '.claude', 'skills', 'turboframe');
   if (fs.existsSync(skill)) ok('skill TurboFrame disponible en Claude Code'); else warn('la skill solo funciona abriendo Claude Code en esta carpeta', 'ejecuta «npm run instalar-skill» para tenerla en cualquier sesión');
+  ok(`${(os.totalmem() / 2 ** 30).toFixed(0)} GB de RAM: render con ${renderWorkers()} navegador${renderWorkers() === '1' ? '' : 'es'} a la vez`);
   try { const st = fs.statfsSync(ROOT), gb = (st.bavail * st.bsize) / 1e9; if (gb >= 2) ok(`${gb.toFixed(0)} GB libres`); else warn(`solo ${gb.toFixed(1)} GB libres`, 'deja al menos 2 GB para renders'); } catch { /* sin statfs */ }
   // Montaje de prueba: un proyecto vacío montado y validado en el navegador de render.
   if (!res.some(([s]) => s === '✖')) {
@@ -635,8 +655,8 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     }
     const mp4 = path.join(p.dir, path.basename(p.dir) + '.mp4');
     const total = duration(p);
-    if (args.tramos === '0' || (!args.tramos && total < 90)) await run(HF, ['render', '--output', mp4, out], {cwd: out, maxBuffer: 1 << 28});
-    else await renderTramos(p, mp4, {forzar: !!args.rehacer, len: Number(args.tramos) || 45});
+    if (args.tramos === '0' || (!args.tramos && total < 90)) await renderHF(['--output', mp4, out], {cwd: out, workers: args.workers});
+    else await renderTramos(p, mp4, {forzar: !!args.rehacer, len: Number(args.tramos) || 45, workers: args.workers});
     const rev = await checkMp4(mp4);
     for (const x of rev.out) console.log('⚠ MP4: ' + x);
     console.log(`✔ ${mp4} · ${duration(p)} s de vídeo en ${((Date.now() - started) / 1000).toFixed(0)} s` + (rev.out.length ? ` · ${rev.out.length} avisos del MP4` : ' · MP4 revisado sin destellos, negros ni congelados'));
@@ -649,7 +669,7 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
  * renderiza el tramo cuya huella no está en proyectos/<nombre>/tramos/: cambiar una escena de un vídeo de 25 minutos
  * vuelve a renderizar su minuto, no el vídeo entero. Los tramos se unen por copia (sin recomprimir) y se añade el audio.
  */
-async function renderTramos(p, mp4, {forzar = false, len = 45} = {}) {
+async function renderTramos(p, mp4, {forzar = false, len = 45, workers = null} = {}) {
   const fps = 30, total = duration(p), scenes = timedScenes(p), q = (t) => Math.round(t * fps) / fps;
   const cuts = [0];
   for (const s of scenes) if (s.start - cuts[cuts.length - 1] >= len && total - s.start >= len / 3) cuts.push(q(s.start));
@@ -672,7 +692,7 @@ async function renderTramos(p, mp4, {forzar = false, len = 45} = {}) {
     fs.rmSync(build, {recursive: true, force: true});
     assemble({...base, tramo: {a, b}}, build);
     process.stdout.write(`  tramo ${i + 1}/${cuts.length - 1} (${a.toFixed(0)}–${b.toFixed(0)} s)…\r`);
-    await run(HF, ['render', '--quiet', '--output', file, build], {cwd: build, maxBuffer: 1 << 28});
+    await renderHF(['--quiet', '--output', file, build], {cwd: build, workers});
     fs.rmSync(build, {recursive: true, force: true});
     made++;
   }
@@ -706,7 +726,7 @@ if (!COMMANDS[cmd]) {
   fotos <nombre> --en=1.2,3 | --escena=<id> | --todas   capturas para revisar (con brillo, vacío y repetidos)
   audio <nombre>               música, efectos y mezcla a -14 LUFS
   auditar <nombre> [--paso=0.25]   auditoría física y visual: choques, cámara, textos, tramos quietos y oscuros
-  render <nombre> [--forzar] [--sin-auditar] [--tramos=0|segundos] [--rehacer]   audio + montaje + auditoría + MP4 final (por tramos con caché si dura más de 90 s)`);
+  render <nombre> [--forzar] [--sin-auditar] [--tramos=0|segundos] [--rehacer] [--workers=N]   audio + montaje + auditoría + MP4 final (por tramos con caché si dura más de 90 s)`);
   process.exit(cmd ? 1 : 0);
 }
 await COMMANDS[cmd](rest);
