@@ -45,6 +45,8 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
 
 ## Flujo de trabajo (en este orden, sin saltarte la revisión)
 
+**Agentes en paralelo: como mucho 2.** Si repartes piezas o escenas entre agentes o subagentes, nunca trabajan más de los que dice `comprobar` en la línea «agentes en paralelo» (2 por defecto; el usuario lo cambia con `TURBOFRAME_AGENTES` en el `.env`). Cada agente abre su propio Chrome con 3D para `mesa`, `fotos` y `validar`: con 8 a la vez, un ordenador de 16 GB se cuelga. Con más tramos que agentes, lánzalos por tandas y empieza por los más avanzados. El motor además reparte los navegadores por turnos (`TURBOFRAME_NAVEGADORES`, 2 con 16 GB): si un comando dice «esperando turno de navegador», es normal; espera, no lo relances.
+
 1. **Encargo.** Guion (o escríbelo tú si te dan solo el tema, siempre con datos verificables), idea de estilo, formato y voz. Pregunta solo lo imprescindible.
 2. **Proyecto y voz.** Ejecuta `nuevo` y guarda el guion en `guion.txt`. Elige la voz con el usuario (`voces`) y ejecuta `voz`. Después `frases`.
 3. **Dirección de arte** en `plan.json` → `arte`:

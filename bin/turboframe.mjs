@@ -120,7 +120,50 @@ function job(p, {audio = null} = {}) {
   };
 }
 
+/*
+ * Turno de navegadores, común a todos los procesos del ordenador. Cada «validar», «fotos», «mesa» o «auditar» abre su
+ * Chrome con 3D; con varios agentes trabajando a la vez llegaban a ser 8 y el ordenador de 16 GB se colgaba. Ahora cada
+ * proceso pide turno antes de abrir Chrome (un fichero por turno en la carpeta temporal, con su pid: si el proceso muere,
+ * el turno se libera solo) y espera si están todos ocupados. El render los ocupa todos y tiene prioridad: reserva y las
+ * fotos nuevas esperan a que acabe. Por defecto, 2 turnos con 16 GB; TURBOFRAME_NAVEGADORES en el .env lo cambia.
+ */
+const SLOTS = path.join(os.tmpdir(), 'turboframe-navegadores');
+const browserSlots = () => { const gb = os.totalmem() / 2 ** 30; return Math.max(1, Number(process.env.TURBOFRAME_NAVEGADORES) || (gb <= 17 ? 2 : gb <= 33 ? 3 : 4)); };
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+let slotsHeld = [];
+const releaseSlots = () => { for (const f of slotsHeld) fs.rmSync(f, {force: true}); slotsHeld = []; fs.rmSync(path.join(SLOTS, 'reserva-' + process.pid), {force: true}); };
+process.on('exit', releaseSlots);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { releaseSlots(); process.exit(130); });
+async function withBrowsers(n, fn) {
+  if (slotsHeld.length) return fn();  // este proceso ya tiene turno (p. ej. el render que valida y audita dentro)
+  const total = browserSlots(), want = Math.min(n, total), exclusive = want >= total;
+  fs.mkdirSync(SLOTS, {recursive: true});
+  const owner = (f) => { try { return +fs.readFileSync(f, 'utf8'); } catch { return 0; } };
+  const sweep = () => { for (const f of fs.readdirSync(SLOTS)) { const full = path.join(SLOTS, f), pid = owner(full); if (!pid || !alive(pid)) fs.rmSync(full, {force: true}); } };
+  if (exclusive) fs.writeFileSync(path.join(SLOTS, 'reserva-' + process.pid), String(process.pid));
+  let told = false;
+  for (;;) {
+    sweep();
+    const reserved = fs.readdirSync(SLOTS).some((f) => f.startsWith('reserva-') && f !== 'reserva-' + process.pid);
+    if (!reserved || exclusive) {
+      const got = [];
+      for (let i = 0; i < total && got.length < want; i++) {
+        const f = path.join(SLOTS, 'turno-' + i);
+        try { const fd = fs.openSync(f, 'wx'); fs.writeSync(fd, String(process.pid)); fs.closeSync(fd); got.push(f); } catch { /* ocupado */ }
+      }
+      if (got.length === want) { slotsHeld = got; break; }
+      for (const f of got) fs.rmSync(f, {force: true});  // o todos los que hacen falta, o ninguno: así nadie se bloquea a medias
+    }
+    if (!told) { process.stderr.write(`… esperando turno de navegador (${total} a la vez en este ordenador${reserved ? '; hay un render en marcha' : ''})\n`); told = true; }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  try { return await fn(); } finally { releaseSlots(); }
+}
+
 async function validate(dir) {
+  return withBrowsers(1, () => validateNow(dir));
+}
+async function validateNow(dir) {
   try {
     const {stdout} = await run(HF, ['validate', '--json', '--no-contrast', '--timeout', '30000', dir], {maxBuffer: 1 << 26});
     return JSON.parse(stdout).errors || [];
@@ -131,7 +174,7 @@ async function validate(dir) {
 
 async function snapshots(dir, times, out) {
   fs.rmSync(out, {recursive: true, force: true});
-  await run(HF, ['snapshot', '--at', times.map((t) => t.toFixed(2)).join(','), '--no-end', '--describe', 'false', '-o', out, dir], {maxBuffer: 1 << 26});
+  await withBrowsers(1, () => run(HF, ['snapshot', '--at', times.map((t) => t.toFixed(2)).join(','), '--no-end', '--describe', 'false', '-o', out, dir], {maxBuffer: 1 << 26}));
   return fs.readdirSync(out).filter((f) => /^frame-\d+/.test(f)).sort((a, b) => parseInt(a.slice(6)) - parseInt(b.slice(6))).map((f) => path.join(out, f));
 }
 
@@ -284,7 +327,8 @@ function findChrome() {
  *  - lo que dicen los píxeles (tramos casi quietos y fotogramas oscuros).
  * Devuelve {graves, avisos, issues} y deja auditoria.json en el proyecto.
  */
-async function auditProject(p, out, {paso = 0.25, silencio = false} = {}) {
+async function auditProject(...a) { return withBrowsers(1, () => auditProjectNow(...a)); }
+async function auditProjectNow(p, out, {paso = 0.25, silencio = false} = {}) {
   const puppeteer = req('puppeteer-core');
   const fmtW = p.fmt === '9:16' ? 1080 : 1920, fmtH = p.fmt === '9:16' ? 1920 : 1080;
   const browser = await puppeteer.launch({executablePath: findChrome(), headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : []), '--allow-file-access-from-files', '--autoplay-policy=no-user-gesture-required']});
@@ -454,6 +498,8 @@ async function doctor() {
   const skill = path.join(os.homedir(), '.claude', 'skills', 'turboframe');
   if (fs.existsSync(skill)) ok('skill TurboFrame disponible en Claude Code'); else warn('la skill solo funciona abriendo Claude Code en esta carpeta', 'ejecuta «npm run instalar-skill» para tenerla en cualquier sesión');
   ok(`${(os.totalmem() / 2 ** 30).toFixed(0)} GB de RAM: render con ${renderWorkers()} navegador${renderWorkers() === '1' ? '' : 'es'} a la vez`);
+  ok(`navegadores a la vez entre todos los procesos (fotos, mesa, validar, auditar): ${browserSlots()}`);
+  ok(`agentes en paralelo: ${Math.max(1, Number(process.env.TURBOFRAME_AGENTES) || 2)}`);
   try { const st = fs.statfsSync(ROOT), gb = (st.bavail * st.bsize) / 1e9; if (gb >= 2) ok(`${gb.toFixed(0)} GB libres`); else warn(`solo ${gb.toFixed(1)} GB libres`, 'deja al menos 2 GB para renders'); } catch { /* sin statfs */ }
   // Montaje de prueba: un proyecto vacío montado y validado en el navegador de render.
   if (!res.some(([s]) => s === '✖')) {
@@ -736,7 +782,9 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     const {stdout} = await run(PYTHON, [path.join(ROOT, 'src/audio.py'), path.join(p.dir, 'sonido.json'), path.join(p.dir, 'mix.wav')], {maxBuffer: 1 << 24, env: {...process.env, FFMPEG}});
     console.log('✔ mix.wav · ' + stdout.trim());
   },
-  async render([name, ...rest]) {
+  /** El render ocupa todos los turnos de navegador mientras dura (dentro valida y audita con los suyos). */
+  async render(argv) { return withBrowsers(Infinity, () => COMMANDS.renderNow(argv)); },
+  async renderNow([name, ...rest]) {
     const p = project(name);
     const args = opts(rest);
     const started = Date.now();
