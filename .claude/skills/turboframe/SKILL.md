@@ -25,6 +25,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 | Comando | Para qué |
 |---|---|
 | `comprobar` | Revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves sin enseñarlas, skill y espacio) y monta un vídeo de prueba. Úsalo si algo no arranca. |
+| `encolar <nombre>` · `cola` · `noche` · `programar --hora=03:00` | Render de noche: deja el vídeo en la cola; ver la cola y sus resultados (`--quitar=<n>`, `--limpiar`); renderizar la cola ahora (lo lanza solo la programación); programar la hora diaria (macOS; `--quitar` la quita). De noche usa más navegadores (`TURBOFRAME_WORKERS_NOCHE`), no deja dormir al ordenador, audita, renderiza aunque haya graves (los anota) y deja `render-noche.log` en el proyecto. |
 | `version` · `actualizar` | Versión instalada · descarga la última y enseña las novedades (los proyectos y el `.env` no se tocan). |
 | `nuevo <nombre> [16:9\|9:16]` | Crea el proyecto. |
 | `voces` | Lista las voces de ElevenLabs (id, nombre, etiquetas). |
@@ -72,7 +73,11 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
    - Efectos y ambientes, en cada escena.
    - `musica.build`: dónde entran más instrumentos, en segundos o con palabras del guion (`["adelante", "rampas"]`).
    - `musica.curva`: volumen de la música atado a palabras: `[{t: 0, gain: 0.85}, {palabra: "piensa", gain: 0.12}, {palabra: "adelante", desfase: -0.08, gain: 0.08}, {palabra: "adelante", gain: 1.05}]` (silencios, entradas de golpe y crescendos; se interpola entre puntos).
-10. **Render.** `render`. Mira 3-4 fotogramas del MP4 final y entrégalo al usuario con su ruta, su duración y lo que ha costado la voz.
+10. **Render.** Renderizar se come el ordenador (varios navegadores con 3D durante minutos u horas), así que por defecto **va de noche**:
+   - Si hay render de noche programado (`encolar` dice la hora) o el usuario no ha pedido el vídeo ya, `encolar <nombre>` y dile que estará listo por la mañana. Si no hay hora programada, ofrécele `programar --hora=03:00`.
+   - Solo si pide el vídeo ya, `render` (avísale de que el ordenador irá lento y de que cierre Chrome y lo que no use).
+   - Por la mañana (o cuando pregunte), `cola`: si un vídeo está «hecho», mira 3-4 fotogramas del MP4 y entrégalo con su ruta, su duración y lo que costó la voz; si está con «avisos» o «fallo», lee `proyectos/<nombre>/render-noche.log`, arregla lo grave y vuelve a encolarlo.
+   - En vídeos largos, de día usa `fotos --escena` y `mesa` (ligeros). `auditar` y `fotos --todas` cargan todas las escenas a la vez: déjalos para el render de noche, que ya audita.
 
 ## Rúbrica (aplícala tú, con exigencia de canal profesional)
 

@@ -6,6 +6,7 @@ Cada versión, lo que trae. `node bin/turboframe.mjs actualizar` instala la últ
 
 - **El ordenador ya no se congela al renderizar:** el render abre los navegadores justos para tu memoria (2 en un ordenador de 16 GB) y con prioridad baja, así que puedes seguir usando el ordenador. Si aun así va justo, pon `TURBOFRAME_WORKERS=1` en el `.env`.
 - `comprobar` dice cuánta RAM tienes y con cuántos navegadores renderizará.
+- **Render de noche:** Claude prepara el vídeo de día y lo deja en una cola; a la hora que elijas (`programar --hora=03:00`) se renderiza solo, sin Claude abierto y sin que el ordenador se duerma. Por la mañana tienes el vídeo y, si algo falló, el registro.
 
 ## 1.0.0 · 2026-10-23
 

@@ -14,7 +14,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import {execFile} from 'child_process';
+import {execFile, execFileSync, spawn} from 'child_process';
 import {promisify} from 'util';
 import {fileURLToPath} from 'url';
 import {createRequire} from 'module';
@@ -406,6 +406,22 @@ function renderHF(rest, {cwd, workers = null}) {
   return process.platform === 'win32' ? run(argv[0], argv.slice(1), {cwd, maxBuffer: 1 << 28}) : run('nice', ['-n', '10', ...argv], {cwd, maxBuffer: 1 << 28});
 }
 
+/* ------------------------------------------------------------------ render de noche */
+/*
+ * El render es lo único que se come el ordenador. De día, Claude prepara el vídeo (guion, voz, piezas, escenas, fotos) y lo
+ * deja en la cola; de noche, «noche» renderiza la cola sin que nadie esté usando el ordenador. La cola vive en
+ * proyectos/.cola.json (las actualizaciones nunca tocan proyectos/).
+ */
+const QUEUE = path.join(PROJECTS, '.cola.json');
+const readQueue = () => { try { return JSON.parse(fs.readFileSync(QUEUE, 'utf8')); } catch { return []; } };
+const writeQueue = (q) => { fs.mkdirSync(PROJECTS, {recursive: true}); fs.writeFileSync(QUEUE, JSON.stringify(q, null, 1)); };
+const stamp = () => new Date().toLocaleString('es-ES', {dateStyle: 'short', timeStyle: 'short'});
+/** De noche nadie usa el ordenador: más navegadores que de día (3 con 16 GB), salvo TURBOFRAME_WORKERS_NOCHE. */
+const nightWorkers = () => process.env.TURBOFRAME_WORKERS_NOCHE || String(os.totalmem() / 2 ** 30 <= 17 ? 3 : Math.max(4, Number(renderWorkers()) * 2));
+const notify = (title, text) => { if (process.platform === 'darwin') execFile('osascript', ['-e', `display notification ${JSON.stringify(text)} with title ${JSON.stringify(title)}`], () => {}); };
+const LAUNCH_LABEL = 'ai.turboframe.noche';
+const launchPlist = () => path.join(os.homedir(), 'Library', 'LaunchAgents', LAUNCH_LABEL + '.plist');
+
 /* ------------------------------------------------------------------ versión e instalación */
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const semver = (v) => String(v).split('.').map((n) => parseInt(n, 10) || 0);
@@ -485,6 +501,86 @@ const COMMANDS = {
     await run('npm', ['install'], {cwd: ROOT, maxBuffer: 1 << 26});
     console.log(`✔ actualizado de ${before} a ${after}. Novedades:\n`);
     for (const c of changelog().filter((c) => newer(c.version, before))) console.log(`## ${c.titulo}\n${c.texto}\n`);
+  },
+  /** Deja un proyecto preparado en la cola del render de noche. */
+  async encolar([name]) {
+    const p = project(name);
+    if (!fs.existsSync(path.join(p.dir, 'voz.mp3'))) die('Ese proyecto aún no tiene voz («turboframe voz»): no se puede renderizar.');
+    const q = readQueue().filter((e) => e.dir !== p.dir || e.estado !== 'pendiente');
+    q.push({dir: p.dir, nombre: path.basename(p.dir), estado: 'pendiente', encolado: stamp()});
+    writeQueue(q);
+    const pend = q.filter((e) => e.estado === 'pendiente').length;
+    const hora = fs.existsSync(launchPlist()) ? (/<key>Hour<\/key>\s*<integer>(\d+)<\/integer>\s*<key>Minute<\/key>\s*<integer>(\d+)/.exec(fs.readFileSync(launchPlist(), 'utf8')) || []).slice(1).map((x) => x.padStart(2, '0')).join(':') : '';
+    console.log(`✔ ${path.basename(p.dir)} en la cola (${pend} pendiente${pend > 1 ? 's' : ''}). ` + (hora ? `Se renderiza esta noche a las ${hora}.` : 'No hay hora programada: «turboframe programar --hora=03:00», o «turboframe noche» para lanzarla ya.'));
+  },
+  /** Cola del render de noche: pendientes y resultados. --quitar=<nombre> saca un pendiente; --limpiar borra los terminados. */
+  async cola([...rest]) {
+    const args = opts(rest);
+    let q = readQueue();
+    if (args.quitar) { q = q.filter((e) => !(e.nombre === args.quitar && e.estado === 'pendiente')); writeQueue(q); }
+    if (args.limpiar) { q = q.filter((e) => e.estado === 'pendiente'); writeQueue(q); }
+    if (!q.length) return console.log('La cola está vacía.');
+    for (const e of q) console.log(`${e.estado === 'pendiente' ? '·' : e.estado === 'hecho' ? '✔' : e.estado === 'avisos' ? '⚠' : '✖'} ${e.nombre} · ${e.estado}` + (e.fin ? ` · ${e.fin}` : ` · encolado ${e.encolado}`) + (e.nota ? ` · ${e.nota}` : ''));
+  },
+  /**
+   * Renderiza la cola, uno tras otro, sin dejar dormir al ordenador. Cada render va en su propio proceso (si uno falla, los
+   * demás siguen) con registro en proyectos/<nombre>/render-noche.log. Si la auditoría encuentra problemas graves, renderiza
+   * igualmente y lo anota: por la mañana hay vídeo y la lista de lo que arreglar.
+   */
+  async noche() {
+    const q = readQueue(), pend = q.filter((e) => e.estado === 'pendiente');
+    if (!pend.length) return console.log(`${stamp()} · cola vacía, nada que renderizar`);
+    // caffeinate impide que el ordenador se duerma mientras dure este proceso.
+    if (process.platform === 'darwin') spawn('caffeinate', ['-i', '-s', '-w', String(process.pid)], {stdio: 'ignore', detached: true}).unref();
+    const workers = nightWorkers();
+    console.log(`${stamp()} · render de noche: ${pend.length} vídeo${pend.length > 1 ? 's' : ''} con ${workers} navegadores`);
+    const done = [];
+    for (const e of pend) {
+      e.estado = 'renderizando'; e.inicio = stamp(); writeQueue(q);
+      const log = path.join(e.dir, 'render-noche.log'), fd = fs.openSync(log, 'w'), t0 = Date.now();
+      const code = await new Promise((res) => spawn(process.execPath, [fileURLToPath(import.meta.url), 'render', e.dir, '--forzar', `--workers=${workers}`], {cwd: ROOT, stdio: ['ignore', fd, fd]}).on('close', res));
+      fs.closeSync(fd);
+      const txt = fs.readFileSync(log, 'utf8'), mins = ((Date.now() - t0) / 60000).toFixed(0);
+      const graves = (/La auditoría encuentra (\d+)|auditoría: (\d+) graves/.exec(txt) || []).slice(1).find(Boolean);
+      e.fin = stamp();
+      if (code === 0 && /✔ .*\.mp4/.test(txt)) { e.estado = graves && graves !== '0' ? 'avisos' : 'hecho'; e.nota = `${mins} min` + (graves && graves !== '0' ? ` · ${graves} problemas graves en la auditoría (ver render-noche.log)` : ''); }
+      else { e.estado = 'fallo'; e.nota = `${mins} min · ` + (txt.trim().split('\n').filter((l) => l.startsWith('✖')).pop() || txt.trim().split('\n').pop() || 'sin salida').slice(0, 160); }
+      writeQueue(q);
+      console.log(`${e.fin} · ${e.nombre}: ${e.estado} · ${e.nota}`);
+      done.push(`${e.nombre}: ${e.estado}`);
+    }
+    notify('TurboFrame · render de noche', done.join(' · '));
+  },
+  /** Programa el render de noche a una hora fija (macOS, launchd). --quitar lo desprograma. */
+  async programar([...rest]) {
+    const args = opts(rest);
+    const plist = launchPlist(), uid = process.getuid ? process.getuid() : 0;
+    const unload = () => { try { execFileSync('launchctl', ['bootout', `gui/${uid}`, plist], {stdio: 'ignore'}); } catch { /* no estaba cargado */ } };
+    if (process.platform !== 'darwin') die(`Programar solo está hecho para macOS. En Linux, añade a «crontab -e»: «0 3 * * * cd ${ROOT} && ${process.execPath} bin/turboframe.mjs noche >> noche.log 2>&1».`);
+    if (args.quitar) { unload(); fs.rmSync(plist, {force: true}); return console.log('✔ render de noche desprogramado'); }
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(args.hora || ''));
+    if (!m || +m[1] > 23 || +m[2] > 59) die('Uso: turboframe programar --hora=03:00 (o --quitar)');
+    const logf = path.join(os.homedir(), 'Library', 'Logs', 'turboframe-noche.log');
+    const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    fs.mkdirSync(path.dirname(plist), {recursive: true});
+    fs.writeFileSync(plist, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>${LAUNCH_LABEL}</string>
+  <key>ProgramArguments</key><array><string>${esc(process.execPath)}</string><string>${esc(fileURLToPath(import.meta.url))}</string><string>noche</string></array>
+  <key>WorkingDirectory</key><string>${esc(ROOT)}</string>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${esc(path.dirname(process.execPath))}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>${+m[1]}</integer><key>Minute</key><integer>${+m[2]}</integer></dict>
+  <key>StandardOutPath</key><string>${esc(logf)}</string><key>StandardErrorPath</key><string>${esc(logf)}</string>
+</dict></plist>
+`);
+    unload();
+    execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plist]);
+    const hh = m[1].padStart(2, '0') + ':' + m[2];
+    console.log(`✔ render de noche programado cada día a las ${hh} (registro en ${logf}).`);
+    console.log('  El ordenador tiene que estar encendido a esa hora. Si suele estar dormido, que se despierte solo: en una terminal,');
+    const w = new Date(2000, 0, 1, +m[1], +m[2] - 5);
+    console.log(`  sudo pmset repeat wakeorpoweron MTWRFSU ${String(w.getHours()).padStart(2, '0')}:${String(w.getMinutes()).padStart(2, '0')}:00`);
   },
   async nuevo([name, fmt]) {
     if (!name) die('Uso: turboframe nuevo <nombre> [16:9|9:16]');
@@ -713,6 +809,10 @@ if (!COMMANDS[cmd]) {
   console.log(`turboframe ${VERSION} <comando>
   comprobar                    revisa la instalación (Node, dependencias, Chrome, ffmpeg, Python, claves, skill) y monta una prueba
   version                      versión instalada
+  encolar <nombre>             deja el vídeo en la cola del render de noche
+  cola [--quitar=<n>] [--limpiar]   la cola: pendientes y resultados
+  noche                        renderiza la cola (lo lanza solo «programar»)
+  programar --hora=03:00 | --quitar   render de noche automático a esa hora (macOS)
   actualizar                   descarga la última versión y enseña las novedades
   nuevo <nombre> [16:9|9:16]   crea proyectos/<nombre>
   voces                        lista las voces de ElevenLabs
