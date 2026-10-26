@@ -5,7 +5,7 @@ Cada versión, lo que trae. `node bin/turboframe.mjs actualizar` instala la últ
 ## 1.0.1 · 2026-10-25
 
 - **El ordenador ya no se congela al renderizar:** el render abre los navegadores justos para tu memoria (2 en un ordenador de 16 GB) y con prioridad baja, así que puedes seguir usando el ordenador. Si aun así va justo, pon `TURBOFRAME_WORKERS=1` en el `.env`.
-- **Ya no se cuelga mientras Claude prepara el vídeo:** como mucho 2 agentes en paralelo y como mucho 2 Chrome de TurboFrame abiertos a la vez (en 16 GB), entre todos los procesos; lo demás espera su turno. Configurable con `TURBOFRAME_AGENTES` y `TURBOFRAME_NAVEGADORES`.
+- **El ordenador va primero:** todo lo pesado (navegadores, ffmpeg, Python) va de uno en uno en ordenadores de 16 GB, con la prioridad de fondo de macOS, y no arranca nada si la memoria libre baja del 12 %; espera a que la haya. Un guardia de Claude Code bloquea los procesos pesados lanzados a la vez y los agentes nuevos si falta memoria. Tarda más, pero puedes seguir usando el ordenador. Ajustes: `TURBOFRAME_AGENTES`, `TURBOFRAME_NAVEGADORES`, `TURBOFRAME_MEMORIA_MIN`, `TURBOFRAME_PRIORIDAD`.
 - `comprobar` dice cuánta RAM tienes y con cuántos navegadores renderizará. También muestra los límites de agentes y navegadores.
 - **Render de noche:** Claude prepara el vídeo de día y lo deja en una cola; a la hora que elijas (`programar --hora=03:00`) se renderiza solo, sin Claude abierto y sin que el ordenador se duerma. Por la mañana tienes el vídeo y, si algo falló, el registro.
 

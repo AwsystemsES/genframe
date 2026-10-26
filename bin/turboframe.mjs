@@ -22,7 +22,9 @@ import {unspoken} from '../src/cifras.mjs';
 import crypto from 'crypto';
 import os from 'os';
 
-const run = promisify(execFile);
+const runRaw = promisify(execFile);
+// ffmpeg, ffprobe y Python también piden turno (ver withBrowsers): nada pesado del motor corre a la vez que otra cosa pesada.
+const run = (cmd, ...a) => ([FFMPEG, PYTHON].includes(cmd) && typeof withBrowsers === 'function' ? withBrowsers(1, () => runRaw(cmd, ...a)) : runRaw(cmd, ...a));
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECTS = path.join(ROOT, 'proyectos');
 for (const line of fs.existsSync(path.join(ROOT, '.env')) ? fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split('\n') : []) {
@@ -30,6 +32,16 @@ for (const line of fs.existsSync(path.join(ROOT, '.env')) ? fs.readFileSync(path
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
 }
 process.env.HYPERFRAMES_NO_TELEMETRY = '1';
+/*
+ * Prioridad de fondo: en macOS todo TurboFrame (y lo que lanza: Chrome, ffmpeg, Python) corre en la cola de fondo del
+ * sistema, la de las copias de seguridad: usa los núcleos de eficiencia y cede la CPU y el disco a lo que el usuario esté
+ * haciendo. Tarda más, pero el ordenador no se nota cargado. TURBOFRAME_PRIORIDAD=normal lo desactiva.
+ */
+if (process.platform === 'darwin' && !process.env.TURBOFRAME_EN_FONDO && process.env.TURBOFRAME_PRIORIDAD !== 'normal' && fs.existsSync('/usr/sbin/taskpolicy')) {
+  const {spawnSync} = await import('child_process');
+  const r = spawnSync('/usr/sbin/taskpolicy', ['-b', process.execPath, ...process.argv.slice(1)], {stdio: 'inherit', env: {...process.env, TURBOFRAME_EN_FONDO: '1'}});
+  process.exit(r.status ?? 1);
+}
 const HF = process.env.HYPERFRAMES_BIN || path.join(ROOT, 'node_modules/.bin/hyperframes');
 // ffmpeg y ffprobe vienen con «npm install» (ffmpeg-static y ffprobe-static); el .env puede indicar otros.
 const req = createRequire(import.meta.url);
@@ -128,7 +140,16 @@ function job(p, {audio = null} = {}) {
  * fotos nuevas esperan a que acabe. Por defecto, 2 turnos con 16 GB; TURBOFRAME_NAVEGADORES en el .env lo cambia.
  */
 const SLOTS = path.join(os.tmpdir(), 'turboframe-navegadores');
-const browserSlots = () => { const gb = os.totalmem() / 2 ** 30; return Math.max(1, Number(process.env.TURBOFRAME_NAVEGADORES) || (gb <= 17 ? 2 : gb <= 33 ? 3 : 4)); };
+const browserSlots = () => { const gb = os.totalmem() / 2 ** 30; return Math.max(1, Number(process.env.TURBOFRAME_NAVEGADORES) || (gb <= 17 ? 1 : gb <= 33 ? 2 : 3)); };
+/** Memoria libre del sistema en %, la misma que da «memory_pressure» (macOS) o MemAvailable (Linux). */
+function memFree() {
+  try {
+    if (process.platform === 'darwin') return Number(execFileSync('/usr/sbin/sysctl', ['-n', 'kern.memorystatus_level'], {encoding: 'utf8'}).trim()) || 100;
+    if (process.platform === 'linux') { const m = fs.readFileSync('/proc/meminfo', 'utf8'), v = (k) => Number((new RegExp(k + ':\\s+(\\d+)').exec(m) || [])[1]); return Math.round((v('MemAvailable') / v('MemTotal')) * 100); }
+  } catch { /* sin dato */ }
+  return 100;
+}
+const memMin = () => Number(process.env.TURBOFRAME_MEMORIA_MIN) || 12;
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 let slotsHeld = [];
 const releaseSlots = () => { for (const f of slotsHeld) fs.rmSync(f, {force: true}); slotsHeld = []; fs.rmSync(path.join(SLOTS, 'reserva-' + process.pid), {force: true}); };
@@ -145,7 +166,8 @@ async function withBrowsers(n, fn) {
   for (;;) {
     sweep();
     const reserved = fs.readdirSync(SLOTS).some((f) => f.startsWith('reserva-') && f !== 'reserva-' + process.pid);
-    if (!reserved || exclusive) {
+    const mem = memFree(), lowMem = mem < memMin();
+    if ((!reserved || exclusive) && !lowMem) {
       const got = [];
       for (let i = 0; i < total && got.length < want; i++) {
         const f = path.join(SLOTS, 'turno-' + i);
@@ -154,8 +176,8 @@ async function withBrowsers(n, fn) {
       if (got.length === want) { slotsHeld = got; break; }
       for (const f of got) fs.rmSync(f, {force: true});  // o todos los que hacen falta, o ninguno: así nadie se bloquea a medias
     }
-    if (!told) { process.stderr.write(`… esperando turno de navegador (${total} a la vez en este ordenador${reserved ? '; hay un render en marcha' : ''})\n`); told = true; }
-    await new Promise((r) => setTimeout(r, 1500));
+    if (!told || (lowMem && told !== 'mem')) { process.stderr.write(lowMem ? `… esperando memoria: el ordenador tiene un ${mem} % libre y TurboFrame no arranca nada pesado por debajo del ${memMin()} % (cierra lo que no uses)\n` : `… esperando turno (${total} trabajo${total > 1 ? 's' : ''} pesado${total > 1 ? 's' : ''} a la vez en este ordenador${reserved ? '; hay un render en marcha' : ''})\n`); told = lowMem ? 'mem' : true; }
+    await new Promise((r) => setTimeout(r, 3000));
   }
   try { return await fn(); } finally { releaseSlots(); }
 }
@@ -442,7 +464,7 @@ function renderWorkers(pedido = null) {
   const v = pedido || process.env.TURBOFRAME_WORKERS;
   if (v) return String(v);
   const gb = os.totalmem() / 2 ** 30;
-  return String(gb <= 17 ? 2 : gb <= 33 ? 3 : Math.min(6, Math.max(4, Math.floor(os.cpus().length / 3))));
+  return String(gb <= 17 ? 1 : gb <= 33 ? 2 : Math.min(6, Math.max(3, Math.floor(os.cpus().length / 4))));
 }
 /** Render de HyperFrames con prioridad baja (el Mac sigue respondiendo) y los navegadores justos. */
 function renderHF(rest, {cwd, workers = null}) {
@@ -461,7 +483,7 @@ const readQueue = () => { try { return JSON.parse(fs.readFileSync(QUEUE, 'utf8')
 const writeQueue = (q) => { fs.mkdirSync(PROJECTS, {recursive: true}); fs.writeFileSync(QUEUE, JSON.stringify(q, null, 1)); };
 const stamp = () => new Date().toLocaleString('es-ES', {dateStyle: 'short', timeStyle: 'short'});
 /** De noche nadie usa el ordenador: más navegadores que de día (3 con 16 GB), salvo TURBOFRAME_WORKERS_NOCHE. */
-const nightWorkers = () => process.env.TURBOFRAME_WORKERS_NOCHE || String(os.totalmem() / 2 ** 30 <= 17 ? 3 : Math.max(4, Number(renderWorkers()) * 2));
+const nightWorkers = () => process.env.TURBOFRAME_WORKERS_NOCHE || String(os.totalmem() / 2 ** 30 <= 17 ? 2 : Math.max(3, Number(renderWorkers()) * 2));
 const notify = (title, text) => { if (process.platform === 'darwin') execFile('osascript', ['-e', `display notification ${JSON.stringify(text)} with title ${JSON.stringify(title)}`], () => {}); };
 const LAUNCH_LABEL = 'ai.turboframe.noche';
 const launchPlist = () => path.join(os.homedir(), 'Library', 'LaunchAgents', LAUNCH_LABEL + '.plist');
@@ -499,7 +521,8 @@ async function doctor() {
   if (fs.existsSync(skill)) ok('skill TurboFrame disponible en Claude Code'); else warn('la skill solo funciona abriendo Claude Code en esta carpeta', 'ejecuta «npm run instalar-skill» para tenerla en cualquier sesión');
   ok(`${(os.totalmem() / 2 ** 30).toFixed(0)} GB de RAM: render con ${renderWorkers()} navegador${renderWorkers() === '1' ? '' : 'es'} a la vez`);
   ok(`navegadores a la vez entre todos los procesos (fotos, mesa, validar, auditar): ${browserSlots()}`);
-  ok(`agentes en paralelo: ${Math.max(1, Number(process.env.TURBOFRAME_AGENTES) || 2)}`);
+  ok(`agentes en paralelo: ${Math.max(1, Number(process.env.TURBOFRAME_AGENTES) || (os.totalmem() / 2 ** 30 <= 17 ? 1 : 2))}`);
+  ok(`memoria libre ahora: ${memFree()} % (nada pesado arranca por debajo del ${memMin()} %) · prioridad ${process.env.TURBOFRAME_EN_FONDO ? 'de fondo' : 'normal'}`);
   try { const st = fs.statfsSync(ROOT), gb = (st.bavail * st.bsize) / 1e9; if (gb >= 2) ok(`${gb.toFixed(0)} GB libres`); else warn(`solo ${gb.toFixed(1)} GB libres`, 'deja al menos 2 GB para renders'); } catch { /* sin statfs */ }
   // Montaje de prueba: un proyecto vacío montado y validado en el navegador de render.
   if (!res.some(([s]) => s === '✖')) {

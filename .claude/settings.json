@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/bin/guardia.sh\"",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  }
+}
