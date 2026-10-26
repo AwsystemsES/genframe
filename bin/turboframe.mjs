@@ -150,6 +150,10 @@ function memFree() {
   return 100;
 }
 const memMin = () => Number(process.env.TURBOFRAME_MEMORIA_MIN) || 12;
+/** Presión de memoria de macOS: 1 normal, 2 aviso (amarillo en el Monitor de Actividad), 4 crítica (rojo). */
+function memPressure() { try { return process.platform === 'darwin' ? Number(execFileSync('/usr/sbin/sysctl', ['-n', 'kern.memorystatus_vm_pressure_level'], {encoding: 'utf8'}).trim()) || 1 : 1; } catch { return 1; } }
+/** ¿Hay memoria para arrancar algo pesado? Con presión crítica nunca; con aviso, solo si queda bastante libre. */
+const memOk = () => { const f = memFree(), p = memPressure(); return p < 4 && f >= memMin() && !(p >= 2 && f < memMin() + 6); };
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 let slotsHeld = [];
 const releaseSlots = () => { for (const f of slotsHeld) fs.rmSync(f, {force: true}); slotsHeld = []; fs.rmSync(path.join(SLOTS, 'reserva-' + process.pid), {force: true}); };
@@ -166,7 +170,7 @@ async function withBrowsers(n, fn) {
   for (;;) {
     sweep();
     const reserved = fs.readdirSync(SLOTS).some((f) => f.startsWith('reserva-') && f !== 'reserva-' + process.pid);
-    const mem = memFree(), lowMem = mem < memMin();
+    const mem = memFree(), lowMem = !memOk();
     if ((!reserved || exclusive) && !lowMem) {
       const got = [];
       for (let i = 0; i < total && got.length < want; i++) {
@@ -176,7 +180,7 @@ async function withBrowsers(n, fn) {
       if (got.length === want) { slotsHeld = got; break; }
       for (const f of got) fs.rmSync(f, {force: true});  // o todos los que hacen falta, o ninguno: así nadie se bloquea a medias
     }
-    if (!told || (lowMem && told !== 'mem')) { process.stderr.write(lowMem ? `… esperando memoria: el ordenador tiene un ${mem} % libre y TurboFrame no arranca nada pesado por debajo del ${memMin()} % (cierra lo que no uses)\n` : `… esperando turno (${total} trabajo${total > 1 ? 's' : ''} pesado${total > 1 ? 's' : ''} a la vez en este ordenador${reserved ? '; hay un render en marcha' : ''})\n`); told = lowMem ? 'mem' : true; }
+    if (!told || (lowMem && told !== 'mem')) { process.stderr.write(lowMem ? `… esperando memoria: el ordenador va justo (${mem} % libre, presión ${['', 'normal', 'en aviso', '', 'crítica'][memPressure()] || memPressure()}) y TurboFrame no arranca nada pesado así (cierra lo que no uses)\n` : `… esperando turno (${total} trabajo${total > 1 ? 's' : ''} pesado${total > 1 ? 's' : ''} a la vez en este ordenador${reserved ? '; hay un render en marcha' : ''})\n`); told = lowMem ? 'mem' : true; }
     await new Promise((r) => setTimeout(r, 3000));
   }
   try { return await fn(); } finally { releaseSlots(); }
@@ -522,7 +526,7 @@ async function doctor() {
   ok(`${(os.totalmem() / 2 ** 30).toFixed(0)} GB de RAM: render con ${renderWorkers()} navegador${renderWorkers() === '1' ? '' : 'es'} a la vez`);
   ok(`navegadores a la vez entre todos los procesos (fotos, mesa, validar, auditar): ${browserSlots()}`);
   ok(`agentes en paralelo: ${Math.max(1, Number(process.env.TURBOFRAME_AGENTES) || (os.totalmem() / 2 ** 30 <= 17 ? 1 : 2))}`);
-  ok(`memoria libre ahora: ${memFree()} % (nada pesado arranca por debajo del ${memMin()} %) · prioridad ${process.env.TURBOFRAME_EN_FONDO ? 'de fondo' : 'normal'}`);
+  ok(`memoria libre ahora: ${memFree()} %, presión ${['', 'normal', 'en aviso', '', 'crítica'][memPressure()] || memPressure()} (nada pesado arranca con presión crítica o por debajo del ${memMin()} %) · prioridad ${process.env.TURBOFRAME_EN_FONDO ? 'de fondo' : 'normal'}`);
   try { const st = fs.statfsSync(ROOT), gb = (st.bavail * st.bsize) / 1e9; if (gb >= 2) ok(`${gb.toFixed(0)} GB libres`); else warn(`solo ${gb.toFixed(1)} GB libres`, 'deja al menos 2 GB para renders'); } catch { /* sin statfs */ }
   // Montaje de prueba: un proyecto vacío montado y validado en el navegador de render.
   if (!res.some(([s]) => s === '✖')) {
