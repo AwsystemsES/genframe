@@ -16,6 +16,7 @@ Guía completa: https://claude.ai/artifact/KBQBZ8i4WFMcJssx78tZRP
   - `instagram-post-1080x1080` y `instagram-post-1080x1350`: publicaciones.
   - `historia-1080x1920`: historias, reels y shorts.
   - `cierre-video-1920x1080`: placa final de los vídeos de demostración.
+  - `destacadas/`: portadas de las historias destacadas de Instagram (1080 × 1920, el icono centrado para el recorte circular): `como-funciona`, `demos`, `precio`, `preguntas` y `clientes`. `vista-previa.png` las muestra recortadas. Al crear la destacada, súbela como historia, elige la imagen como portada y ajústala al centro.
 
 ## Colores y letras
 
