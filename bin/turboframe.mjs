@@ -796,7 +796,9 @@ if (f.actions[0]) f.act(f.actions[0], 1, 2.1);`;
     const sfx = [], amb = [];
     for (const s of scenes) {
       for (const fx of s.sfx || []) { const t = fx.t ?? (fx.palabra ? cue(fx.palabra, s.start) : null); if (t !== null && SFX[fx.name || fx.nombre]) sfx.push({name: fx.name || fx.nombre, t, gain: fx.gain ?? 1}); }
-      if (s.ambiente && AMBIENCES.includes(s.ambiente)) amb.push({kind: s.ambiente, from: s.start, to: s.end});
+      // Sin ambientes de ruido (mar, viento, lluvia, río): eran un siseo continuo bajo la voz y molestaban (29-10).
+      // TURBOFRAME_AMBIENTES=1 en el .env los recupera.
+      if (s.ambiente && AMBIENCES.includes(s.ambiente) && process.env.TURBOFRAME_AMBIENTES === '1') amb.push({kind: s.ambiente, from: s.start, to: s.end});
     }
     const music = p.plan.sonido?.musica || {engine: 'ninguna'};
     const third = scenes[Math.floor(scenes.length / 3)]?.start, two = scenes[Math.floor((scenes.length * 2) / 3)]?.start;

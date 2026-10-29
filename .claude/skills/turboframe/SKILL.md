@@ -37,7 +37,7 @@ Responde siempre en el idioma del usuario. Antes de empezar, lee `referencia/kit
 | `validar <nombre>` | Monta el proyecto y lista los errores de ejecución por escena. |
 | `auditar <nombre> [--paso=0.25]` | Recorre el vídeo y lista lo que está mal: piezas que se atraviesan, cámara en el agua o dentro de algo, olas que tapan, pies que patinan, piezas enterradas o flotando, textos cortados, fuera de la zona segura o solapados, escenas que tapan los subtítulos, la capa común o la viñeta, tramos de más de 2 s casi quietos, fotogramas oscuros y **cifras en pantalla que el guion no dice** (textos y rótulos 3D; entiende números con letras en inglés y español, años, décadas y precios, y no avisa de marcas de ejes, coordenadas, numeraciones ni códigos). Deja `auditoria.json`. Un aviso de cifra es un dato que hay que comprobar: o falta en el guion o está mal en pantalla. |
 | `fotos <nombre> --escena=<id> \| --todas \| --en=1.2,3` | Capturas para revisar; marca las oscuras, las de centro vacío y las repetidas. Deja `hoja.jpg`. |
-| `audio <nombre>` | Música compuesta, efectos y ambientes atados a palabras, mezcla a −14 LUFS. |
+| `audio <nombre>` | Música compuesta y efectos atados a palabras, mezcla a −14 LUFS. Sin ambientes de fondo. |
 | `render <nombre> [--forzar]` | Audio, montaje, auditoría y MP4 final en `proyectos/<nombre>/<nombre>.mp4`. Si la auditoría encuentra problemas graves, no renderiza (salvo `--forzar`). Si el vídeo dura más de 90 s, renderiza **por tramos con caché** (~45 s, empezando en una escena, en `proyectos/<nombre>/tramos/`): cada tramo lleva la huella de todo lo que le afecta (motor, arte, piezas, capa común, sus escenas y palabras) y solo se rehacen los que cambiaron; se unen sin recomprimir. `--tramos=0` lo desactiva, `--tramos=<s>` cambia la longitud y `--rehacer` los rehace todos. Al final revisa el MP4 (como `revisar`). Abre los navegadores de render justos para la RAM del ordenador (2 con 16 GB) y con prioridad baja; `--workers=N` o `TURBOFRAME_WORKERS` en el `.env` lo cambian. Si el usuario dice que el ordenador se congela, baja a 1. |
 | `revisar <nombre>` | Revisa el MP4 final fotograma a fotograma: destellos de uno o dos fotogramas, más de medio segundo en negro y más de 3 s congelado. |
 
@@ -60,7 +60,7 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
 
    Escribe además, para ti, la idea visual del vídeo y las reglas de dibujo comunes. Nunca un vídeo en penumbra: aunque sea de noche, todo tiene que verse.
 4. **Guion visual.** En `plan.json` → `escenas`, una por cada 4-12 s de voz:
-   `{id, frases: [desde, hasta], transicion: 'corte'|'fundido'|'deslizar'|'pagina'|'zoom'|'cortina'|'desenfoque', sfx: [{nombre, palabra}], ambiente}`.
+   `{id, frases: [desde, hasta], transicion: 'corte'|'fundido'|'deslizar'|'pagina'|'zoom'|'cortina'|'desenfoque', sfx: [{nombre, palabra}]}`. No pongas `ambiente`: los ambientes de fondo (mar, viento, lluvia, río) son un siseo continuo que molesta y el motor ya no los mezcla.
    Cubre todas las frases, en orden y sin huecos. Decide para cada escena qué se ve (3D o 2D), con qué piezas, cámara y qué pasa en cada palabra clave. Varía los recursos entre escenas seguidas.
 5. **Reparto.** Haz la lista de piezas: personas, vehículos, edificios, objetos y animales. Pocas, muy ricas y reutilizables. Fabrícalas con formas redondeadas (`f.rbox`, `f.rcyl`, `f.capsula`), acabados con textura en las superficies grandes (`acabado: 'pintura'|'metal'|'hormigon'|…`) y todos los textos con `f.letrero` (nunca se cortan). En la mesa, un aviso de «rótulo demasiado pequeño» se corrige antes de seguir.
    - **Personas** con `f.gen.human`; **barcos** con `f.gen.hull`. Lo demás, con las herramientas de `f`.
@@ -72,7 +72,7 @@ Cualquier comando acepta también una ruta en vez de un nombre (por ejemplo, `au
 8. **Revisión del conjunto.** `auditar` y arregla todo lo grave y los avisos que se vean. Después `fotos --todas` y mira `hoja.jpg`: coherencia de estilo, variedad, ritmo, que cada escena cuente su parte y que no haya planos repetidos ni oscuros. Corrige lo que baje el vídeo.
 9. **Sonido.** En `plan.json` → `sonido`:
    - `musica`: `{engine: 'orquesta', key, mode, bpm, lead: 'harp'|'piano'|'strings', gain}`, o `{engine: 'sintetizador', style: 'urbano'|'synthwave'|'curioso'}`, o `{engine: 'ninguna'}`.
-   - Efectos y ambientes, en cada escena.
+   - Efectos puntuales en cada escena (golpes, pasos, transiciones). Nada de ambientes de fondo.
    - `musica.build`: dónde entran más instrumentos, en segundos o con palabras del guion (`["adelante", "rampas"]`).
    - `musica.curva`: volumen de la música atado a palabras: `[{t: 0, gain: 0.85}, {palabra: "piensa", gain: 0.12}, {palabra: "adelante", desfase: -0.08, gain: 0.08}, {palabra: "adelante", gain: 1.05}]` (silencios, entradas de golpe y crescendos; se interpola entre puntos).
 10. **Render.** Renderizar se come el ordenador (varios navegadores con 3D durante minutos u horas), así que por defecto **va de noche**:
